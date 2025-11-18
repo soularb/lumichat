@@ -126,7 +126,12 @@ Asignar Agente Humano / Fin Normal
 - **Beneficio**: Respuestas naturales divididas en mensajes cortos (estilo WhatsApp/humano)
 - **Complejidad**: 🟡 Media
 - **Tiempo estimado**: 1 hora
-- **Estado**: ⏳ Pendiente
+- **Estado**: ✅ **COMPLETADO** (2025-11-18)
+- **Implementación**:
+  - Nodo "Formatear Respuesta (Multi-Parte)" divide respuestas en hasta 4 partes
+  - Detección inteligente de oraciones y agrupación lógica
+  - Respuestas cortas (<150 caracteres) se envían completas
+  - Cada parte contiene 1-3 oraciones para máxima naturalidad
 - **Componentes**:
   - Chain LLM con GPT-4.1-mini (temp 0.3)
   - Structured Output Parser (JSON con part_1, part_2, part_3, part_4)
@@ -148,7 +153,13 @@ Asignar Agente Humano / Fin Normal
 - **Beneficio**: Simula escritura humana real, experiencia premium
 - **Complejidad**: 🟡 Media
 - **Tiempo estimado**: 1 hora
-- **Estado**: ⏳ Pendiente
+- **Estado**: ✅ **COMPLETADO** (2025-11-18)
+- **Implementación**:
+  - Sistema de envío secuencial con Wait nodes (2 segundos entre mensajes)
+  - Nodos condicionales "¿Hay Parte X?" verifican existencia antes de enviar
+  - Nodo Merge reunifica todas las rutas antes del etiquetado
+  - Flujo: Parte 1 → Wait → If Parte 2? → Enviar → Wait → If Parte 3? → etc.
+  - Solo envía las partes que existen (no envía cadenas vacías)
 - **Componentes**:
   - Wait nodes con delays calculados
   - If conditions para verificar existencia de cada parte
@@ -285,10 +296,10 @@ Asignar Agente Humano / Fin Normal
 
 ## ✅ Progreso de Implementación
 
-### Sprint Actual: **Fase 1 - Mejoras Rápidas** ✅ COMPLETADO
+### Sprint Actual: **Fase 1 + Fase 2 Completadas** ✅
 **Inicio**: 2025-11-18
 **Fin**: 2025-11-18
-**Duración real**: ~1 hora
+**Duración total**: ~2 horas
 
 #### Tareas Completadas
 - ✅ Análisis automatización actual XIMARO
@@ -296,14 +307,18 @@ Asignar Agente Humano / Fin Normal
 - ✅ Identificación de funcionalidades a integrar
 - ✅ Creación de documento de progreso (lumichat.md)
 - ✅ **Obtención de credenciales Postgres y Redis desde EasyPanel**
-- ✅ **Implementación filtro etiqueta "humano"**
-- ✅ **Migración de Buffer Memory a Postgres Chat Memory**
+- ✅ **Implementación filtro etiqueta "humano" (Fase 1)**
+- ✅ **Migración de Buffer Memory a Postgres Chat Memory (Fase 1)**
 - ✅ **Creación de workflow mejorado: `ximaro-fase1-mejorado.json`**
+- ✅ **Sistema de formateo multi-parte con detección inteligente (Fase 2)**
+- ✅ **Sistema de envío escalonado con delays de 2 segundos (Fase 2)**
+- ✅ **Creación de workflow humanizado: `ximaro-fase2-humanizacion.json`** ⭐
 
 #### Archivos Generados
-1. `/home/user/lumichat/workflows/ximaro-original.json` - Workflow original
-2. `/home/user/lumichat/workflows/ximaro-fase1-mejorado.json` - **Workflow con Fase 1 implementada**
-3. `/home/user/lumichat/lumichat.md` - Documentación del proyecto (este archivo)
+1. `/home/user/lumichat/workflows/ximaro-original.json` - Workflow original (backup)
+2. `/home/user/lumichat/workflows/ximaro-fase1-mejorado.json` - Workflow con Fase 1 (filtro humano + Postgres)
+3. `/home/user/lumichat/workflows/ximaro-fase2-humanizacion.json` - **Workflow con Fase 1 + Fase 2 (humanización)** ⭐
+4. `/home/user/lumichat/lumichat.md` - Documentación del proyecto (este archivo)
 
 #### Cambios Realizados en Fase 1
 
@@ -322,13 +337,60 @@ Asignar Agente Humano / Fin Normal
 - **sessionKey**: `body.conversation.contact_inbox.source_id`
 - **Beneficio**: Memoria persistente ilimitada (no solo 20 mensajes)
 
-**🔹 Flujo actualizado**:
+**🔹 Flujo actualizado (Fase 1)**:
 ```
 Webhook → If (no outgoing) → Extraer Conversation ID →
 Obtener Labels Actuales → 🆕 Filtro Humano → Configuración →
 AI Agent (Gemini + 🆕 Postgres Memory) → Extraer Clasificación →
 Enviar Respuesta → Aplicar Etiqueta → ¿Escalar a Humano?
 ```
+
+#### Cambios Realizados en Fase 2 (Humanización)
+
+**🔹 Nuevo nodo: "Formatear Respuesta (Multi-Parte)"**
+- **Tipo**: Code (JavaScript)
+- **Posición**: Después de "Extraer Clasificación"
+- **Función**: Divide respuesta en hasta 4 partes naturales
+- **Lógica**:
+  - Detecta oraciones (por puntos, signos de exclamación, interrogación)
+  - Agrupa oraciones en partes (máx 2-3 oraciones por parte)
+  - Respuestas cortas (<150 chars) → se envían completas en part_1
+  - Respuestas largas → se dividen inteligentemente
+- **Output**: `{part_1, part_2, part_3, part_4, categoria, confianza, conversation_id, account_id}`
+
+**🔹 Sistema de Envío Escalonado**:
+- **Nodos Wait**: 3 nodos con 2 segundos de delay cada uno
+- **Nodos condicionales**: "¿Hay Parte 2?", "¿Hay Parte 3?", "¿Hay Parte 4?"
+- **Flujo escalonado**:
+  ```
+  Enviar Parte 1 → Wait 2s → ¿Hay Parte 2?
+    → SÍ: Enviar Parte 2 → Wait 2s → ¿Hay Parte 3?
+      → SÍ: Enviar Parte 3 → Wait 2s → ¿Hay Parte 4?
+        → SÍ: Enviar Parte 4 → Merge
+        → NO: Merge
+      → NO: Merge
+    → NO: Merge
+  ```
+- **Nodo Merge**: Reunifica todos los caminos antes de etiquetar
+- **Beneficio**: Parece que una persona real está escribiendo mensajes cortos
+
+**🔹 Flujo actualizado (Fase 2)**:
+```
+Webhook → If (no outgoing) → Extraer Conversation ID →
+Obtener Labels Actuales → Filtro Humano → Configuración →
+AI Agent (Gemini + Postgres Memory) → Extraer Clasificación →
+🆕 Formatear Multi-Parte → 🆕 Enviar Parte 1 → 🆕 Wait → 🆕 If Parte 2? →
+🆕 Enviar Parte 2 → 🆕 Wait → 🆕 If Parte 3? → ... → 🆕 Merge →
+Aplicar Etiqueta → ¿Escalar a Humano?
+```
+
+**📊 Comparativa: Fase 1 vs Fase 2**:
+| **Aspecto** | **Fase 1** | **Fase 2** |
+|---|---|---|
+| Envío de respuestas | Un solo mensaje | Hasta 4 mensajes escalonados |
+| Naturalidad | Bloques de texto | Mensajes cortos como humano |
+| Delays | Sin delays | 2 segundos entre mensajes |
+| Experiencia | Funcional | Premium/humanizada |
 
 #### Tareas Pendientes (Próxima Fase)
 - ⏳ Procesamiento de mensajes de voz (requiere OpenAI API)
