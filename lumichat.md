@@ -83,11 +83,15 @@ Asignar Agente Humano / Fin Normal
 - **Beneficio**: Evitar que bot y humano respondan simultáneamente
 - **Complejidad**: 🟢 Muy Baja
 - **Tiempo estimado**: 10 minutos
-- **Estado**: ⏳ Pendiente
+- **Estado**: ✅ **COMPLETADO** (2025-11-18)
 - **Detalles**:
   - Verificar si conversación tiene label "humano" antes de procesar
   - Si tiene label → detener workflow
   - Si no tiene label → continuar flujo normal
+- **Implementación**:
+  - Añadido nodo "Filter" después de "Obtener Labels Actuales"
+  - Condición: `labels NOT CONTAINS "humano"`
+  - Si tiene etiqueta "humano", el workflow se detiene automáticamente
 
 #### 2. Procesamiento de Mensajes de Voz
 - **Beneficio**: Soporte completo de comunicación (muchos usuarios prefieren audio)
@@ -106,9 +110,15 @@ Asignar Agente Humano / Fin Normal
 - **Beneficio**: Mantener contexto entre sesiones, no se pierde historial
 - **Complejidad**: 🟢 Baja
 - **Tiempo estimado**: 30 minutos
-- **Estado**: ⏳ Pendiente
+- **Estado**: ✅ **COMPLETADO** (2025-11-18)
 - **Cambio**: Reemplazar Buffer Window Memory por Postgres Chat Memory
 - **sessionKey**: Usar source_id de Chatwoot
+- **Implementación**:
+  - Reemplazado nodo "Simple Memory" (Buffer Window) por "Postgres Chat Memory"
+  - Configurado con credenciales de EasyPanel Postgres
+  - Host: `alvaro_postgres`, Database: `alvaro`, Port: `5432`
+  - Mantiene sessionKey: `body.conversation.contact_inbox.source_id`
+  - Ahora la memoria persiste entre sesiones (no solo 20 mensajes)
 
 ### 🥈 Prioridad Media (Diferenciador Competitivo)
 
@@ -275,21 +285,58 @@ Asignar Agente Humano / Fin Normal
 
 ## ✅ Progreso de Implementación
 
-### Sprint Actual: [Nombre del Sprint]
-**Inicio**: [Fecha]
-**Fin estimado**: [Fecha]
+### Sprint Actual: **Fase 1 - Mejoras Rápidas** ✅ COMPLETADO
+**Inicio**: 2025-11-18
+**Fin**: 2025-11-18
+**Duración real**: ~1 hora
 
 #### Tareas Completadas
 - ✅ Análisis automatización actual XIMARO
 - ✅ Análisis automatización referencia (Peluquería)
 - ✅ Identificación de funcionalidades a integrar
 - ✅ Creación de documento de progreso (lumichat.md)
+- ✅ **Obtención de credenciales Postgres y Redis desde EasyPanel**
+- ✅ **Implementación filtro etiqueta "humano"**
+- ✅ **Migración de Buffer Memory a Postgres Chat Memory**
+- ✅ **Creación de workflow mejorado: `ximaro-fase1-mejorado.json`**
 
-#### Tareas En Progreso
-- ⏳ [Pendiente de asignación]
+#### Archivos Generados
+1. `/home/user/lumichat/workflows/ximaro-original.json` - Workflow original
+2. `/home/user/lumichat/workflows/ximaro-fase1-mejorado.json` - **Workflow con Fase 1 implementada**
+3. `/home/user/lumichat/lumichat.md` - Documentación del proyecto (este archivo)
+
+#### Cambios Realizados en Fase 1
+
+**🔹 Nuevo nodo: "Filtro: No tiene etiqueta 'humano'"**
+- **Tipo**: Filter (n8n-nodes-base.filter)
+- **Posición**: Después de "Obtener Labels Actuales"
+- **Condición**: `labels NOT CONTAINS "humano"`
+- **Beneficio**: Si un humano ya está atendiendo (etiqueta "humano" presente), el bot NO responde
+
+**🔹 Nodo actualizado: "Postgres Chat Memory"**
+- **Tipo**: memoryPostgresChat (antes: memoryBufferWindow)
+- **Host**: `alvaro_postgres`
+- **Database**: `alvaro`
+- **User**: `postgres`
+- **Port**: `5432`
+- **sessionKey**: `body.conversation.contact_inbox.source_id`
+- **Beneficio**: Memoria persistente ilimitada (no solo 20 mensajes)
+
+**🔹 Flujo actualizado**:
+```
+Webhook → If (no outgoing) → Extraer Conversation ID →
+Obtener Labels Actuales → 🆕 Filtro Humano → Configuración →
+AI Agent (Gemini + 🆕 Postgres Memory) → Extraer Clasificación →
+Enviar Respuesta → Aplicar Etiqueta → ¿Escalar a Humano?
+```
+
+#### Tareas Pendientes (Próxima Fase)
+- ⏳ Procesamiento de mensajes de voz (requiere OpenAI API)
+- ⏳ Decisión sobre próxima fase (Fase 2: Humanización o Fase 3: Anti-spam)
 
 #### Bloqueadores
-- Ninguno por ahora
+- **Procesamiento de voz**: Requiere OpenAI API key (Whisper)
+- **Fases avanzadas**: Decisión del cliente sobre prioridades
 
 ---
 
@@ -299,20 +346,23 @@ Asignar Agente Humano / Fin Normal
 - ✅ Chatwoot (alvaro-chatwoot.5epeub.easypanel.host)
 - ✅ Google Gemini API
 - ✅ n8n instance
+- ✅ **Postgres database (EasyPanel) - CONFIGURADO**
+- ✅ **Redis database (EasyPanel) - CONFIGURADO**
 
-### Servicios Necesarios (según funcionalidades)
-- ⏳ OpenAI API (para Whisper, GPT-4.1-mini, embeddings)
-- ⏳ Postgres database (para memoria persistente)
-- ⏳ Redis database (para anti-spam) - Opcional
-- ⏳ Airtable account (para CRM) - Opcional
-- ⏳ Supabase account (para RAG) - Opcional
+### Servicios Necesarios (según funcionalidades futuras)
+- ⏳ OpenAI API (para Whisper, GPT-4.1-mini, embeddings) - Fase 2+
+- ⏳ Airtable account (para CRM) - Opcional Fase 4
+- ⏳ Supabase account (para RAG) - Opcional Fase 4
 
-### Credenciales a Configurar
-- [ ] OpenAI API Key
-- [ ] Postgres connection string
-- [ ] Redis connection (si se usa)
-- [ ] Airtable API key (si se usa)
-- [ ] Supabase API key + project URL (si se usa)
+### Credenciales Configuradas ✅
+- [x] **Postgres connection** - Host: `alvaro_postgres`, DB: `alvaro`, Port: `5432`
+- [x] **Redis connection** - Host: `alvaro_redis`, Port: `6379`
+- [x] Chatwoot API Token
+
+### Credenciales Pendientes
+- [ ] OpenAI API Key (para voz + fases avanzadas)
+- [ ] Airtable API key (si se usa CRM)
+- [ ] Supabase API key + project URL (si se usa RAG)
 
 ---
 
