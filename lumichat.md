@@ -97,14 +97,14 @@ Asignar Agente Humano / Fin Normal
 - **Beneficio**: Soporte completo de comunicación (muchos usuarios prefieren audio)
 - **Complejidad**: 🟢 Baja
 - **Tiempo estimado**: 20 minutos
-- **Estado**: ⏳ Pendiente
-- **Componentes**:
-  - Detectar tipo de mensaje (texto/audio)
-  - Extraer base64 del audio
-  - Convertir a archivo .mp3
-  - Transcribir con OpenAI Whisper
-  - Normalizar texto transcrito
-- **Dependencias**: OpenAI API (Whisper)
+- **Estado**: ✅ **COMPLETADO** (2025-11-18 - Fase 3)
+- **Implementación**:
+  - Nodo "Extraer Datos del Mensaje" detecta attachments de tipo audio/voice
+  - If condicional "¿Es Audio?" separa flujo de texto vs audio
+  - Nodo "Transcribir Audio (Whisper)" llama a OpenAI API con modelo whisper-1
+  - Nodo "Normalizar Mensaje" unifica texto directo o transcripción en campo `normalized_message`
+  - Configurado para idioma español (language: 'es')
+- **Dependencias**: OpenAI API Key configurada ✅
 
 #### 3. Memoria Postgres Persistente
 - **Beneficio**: Mantener contexto entre sesiones, no se pierde historial
@@ -172,16 +172,15 @@ Asignar Agente Humano / Fin Normal
 - **Beneficio**: Evita interrumpir al cliente, espera a que termine de escribir
 - **Complejidad**: 🟡 Media
 - **Tiempo estimado**: 1-2 horas
-- **Estado**: ⏳ Pendiente
-- **Lógica**:
-  - Guardar mensaje en cola Redis (por número/user)
-  - Recuperar historial
-  - Validar si último mensaje tiene >7 segundos
-  - Si <7 segs → Wait 7 segundos → volver a validar
-  - Si >7 segs → procesar
-  - Si sessionID diferente → ignorar (duplicado)
-- **Dependencias**: Redis database
-- **Nota**: Chatwoot puede tener rate limiting propio, verificar si es necesario
+- **Estado**: ✅ **COMPLETADO** (2025-11-18 - Fase 3)
+- **Implementación**:
+  - Nodo "Redis: Guardar Mensaje" guarda mensaje con timestamp en Redis (TTL 10 seg)
+  - Nodo "Wait 7seg (Anti-Spam)" espera 7 segundos antes de procesar
+  - Nodo "Redis: Validar Último Mensaje" verifica si el mensaje sigue siendo el más reciente
+  - If condicional "¿Procesar Mensaje?" decide si continuar o cancelar
+  - Si llegó un mensaje más nuevo durante la espera, se cancela el procesamiento
+  - Key pattern: `chatwoot:queue:{source_id}`
+- **Dependencias**: Redis (`alvaro_redis:6379`) ✅
 
 ### 🎨 Prioridad Baja (Datos y Analytics)
 
@@ -296,29 +295,34 @@ Asignar Agente Humano / Fin Normal
 
 ## ✅ Progreso de Implementación
 
-### Sprint Actual: **Fase 1 + Fase 2 Completadas** ✅
+### Sprint Actual: **Fase 1 + Fase 2 + Fase 3 COMPLETADAS** ✅🎉
 **Inicio**: 2025-11-18
 **Fin**: 2025-11-18
-**Duración total**: ~2 horas
+**Duración total**: ~4 horas
 
 #### Tareas Completadas
 - ✅ Análisis automatización actual XIMARO
 - ✅ Análisis automatización referencia (Peluquería)
 - ✅ Identificación de funcionalidades a integrar
 - ✅ Creación de documento de progreso (lumichat.md)
-- ✅ **Obtención de credenciales Postgres y Redis desde EasyPanel**
+- ✅ **Obtención de credenciales Postgres, Redis y OpenAI**
 - ✅ **Implementación filtro etiqueta "humano" (Fase 1)**
 - ✅ **Migración de Buffer Memory a Postgres Chat Memory (Fase 1)**
 - ✅ **Creación de workflow mejorado: `ximaro-fase1-mejorado.json`**
 - ✅ **Sistema de formateo multi-parte con detección inteligente (Fase 2)**
 - ✅ **Sistema de envío escalonado con delays de 2 segundos (Fase 2)**
-- ✅ **Creación de workflow humanizado: `ximaro-fase2-humanizacion.json`** ⭐
+- ✅ **Creación de workflow humanizado: `ximaro-fase2-humanizacion.json`**
+- ✅ **Procesamiento de mensajes de voz con OpenAI Whisper (Fase 3)** 🎤
+- ✅ **Sistema anti-spam con Redis y validación de 7 segundos (Fase 3)** 🛡️
+- ✅ **Sistema mejorado de etiquetas (remover anteriores antes de aplicar nuevas) (Fase 3)** 🏷️
+- ✅ **Creación de workflow completo: `ximaro-fase3-completo.json`** ⭐⭐⭐
 
 #### Archivos Generados
 1. `/home/user/lumichat/workflows/ximaro-original.json` - Workflow original (backup)
 2. `/home/user/lumichat/workflows/ximaro-fase1-mejorado.json` - Workflow con Fase 1 (filtro humano + Postgres)
-3. `/home/user/lumichat/workflows/ximaro-fase2-humanizacion.json` - **Workflow con Fase 1 + Fase 2 (humanización)** ⭐
-4. `/home/user/lumichat/lumichat.md` - Documentación del proyecto (este archivo)
+3. `/home/user/lumichat/workflows/ximaro-fase2-humanizacion.json` - Workflow con Fase 1 + Fase 2 (humanización)
+4. `/home/user/lumichat/workflows/ximaro-fase3-completo.json` - **Workflow COMPLETO con Fase 1 + 2 + 3 (voz + anti-spam + humanización)** ⭐⭐⭐
+5. `/home/user/lumichat/lumichat.md` - Documentación del proyecto (este archivo)
 
 #### Cambios Realizados en Fase 1
 
@@ -392,39 +396,89 @@ Aplicar Etiqueta → ¿Escalar a Humano?
 | Delays | Sin delays | 2 segundos entre mensajes |
 | Experiencia | Funcional | Premium/humanizada |
 
-#### Tareas Pendientes (Próxima Fase)
-- ⏳ Procesamiento de mensajes de voz (requiere OpenAI API)
-- ⏳ Decisión sobre próxima fase (Fase 2: Humanización o Fase 3: Anti-spam)
+#### Cambios Realizados en Fase 3 (COMPLETA) 🎉
 
-#### Bloqueadores
-- **Procesamiento de voz**: Requiere OpenAI API key (Whisper)
-- **Fases avanzadas**: Decisión del cliente sobre prioridades
+**🔹 Nuevos nodos: Procesamiento de Voz 🎤**
+- **Nodo "Extraer Datos del Mensaje"**: Detecta tipo de mensaje (texto/audio) y extrae attachment URL
+- **If "¿Es Audio?"**: Separa flujo para mensajes de voz
+- **Nodo "Transcribir Audio (Whisper)"**:
+  - Llama a OpenAI API con endpoint `/v1/audio/transcriptions`
+  - Modelo: `whisper-1`
+  - Idioma: español (`es`)
+  - Procesa attachments de tipo `audio` o `voice`
+- **Nodo "Normalizar Mensaje"**: Unifica texto directo o transcripción en campo `normalized_message`
+
+**🔹 Nuevos nodos: Sistema Anti-Spam con Redis 🛡️**
+- **Nodo "Redis: Guardar Mensaje"**:
+  - Guarda mensaje con timestamp en Redis
+  - Key pattern: `chatwoot:queue:{source_id}`
+  - TTL: 10 segundos
+  - Librería: `ioredis`
+- **Nodo "Wait 7seg (Anti-Spam)"**: Espera 7 segundos antes de procesar
+- **Nodo "Redis: Validar Último Mensaje"**:
+  - Recupera mensaje actual de Redis
+  - Compara message_id guardado vs actual
+  - Si hay uno más nuevo → cancela procesamiento
+  - Si es el mismo → continúa flujo
+- **If "¿Procesar Mensaje?"**: Decide si continuar o detener basándose en validación Redis
+
+**🔹 Nuevos nodos: Gestión Mejorada de Etiquetas 🏷️**
+- **Nodo "Obtener Labels Actuales"**: Fetch de etiquetas antes de aplicar nueva
+- **Nodo "Preparar Limpieza de Labels"**:
+  - Filtra etiquetas que son categorías XIMARO
+  - Lista: interes_inicial, contacto_obtenido, seguimiento_humano, venta_cerrada, atencion_especial, pedido_reunion
+- **If "¿Hay Labels Anteriores?"**: Verifica si hay etiquetas a remover
+- **Nodo "Remover Labels Anteriores"**: Elimina etiquetas viejas usando Chatwoot API
+- **Nodo "Aplicar Etiqueta Nueva"**: Aplica solo la nueva categoría
+
+**🔹 Flujo actualizado (Fase 3 COMPLETO)**:
+```
+Webhook → If (no outgoing) → Extraer Datos del Mensaje →
+🆕 ¿Es Audio? → [SÍ: Transcribir con Whisper] → Normalizar Mensaje →
+🆕 Redis: Guardar Mensaje → 🆕 Wait 7seg → 🆕 Redis: Validar →
+🆕 ¿Procesar? → Obtener Labels → Filtro Humano → Configuración →
+AI Agent (Gemini + Postgres Memory) → Extraer Clasificación →
+Formatear Multi-Parte → Enviar Parte 1 → Wait → If Parte 2? → ... → Merge →
+🆕 Obtener Labels Actuales → 🆕 Preparar Limpieza → 🆕 Remover Labels Anteriores →
+Aplicar Etiqueta Nueva → ¿Escalar a Humano?
+```
+
+**📊 Comparativa: Fase 2 vs Fase 3**:
+| **Aspecto** | **Fase 2** | **Fase 3** |
+|---|---|---|
+| Mensajes de voz | No soportado | ✅ Transcripción automática |
+| Spam / Mensajes rápidos | Procesa todos | ✅ Espera 7seg, procesa último |
+| Etiquetas | Acumulativas | ✅ Reemplaza anterior por nueva |
+| Tipos de contenido | Solo texto | ✅ Texto + Audio |
+| Eficiencia | Procesa todo | ✅ Cancela mensajes intermedios |
 
 ---
 
 ## 🔧 Configuración y Dependencias
 
-### Servicios Actuales
-- ✅ Chatwoot (alvaro-chatwoot.5epeub.easypanel.host)
-- ✅ Google Gemini API
-- ✅ n8n instance
-- ✅ **Postgres database (EasyPanel) - CONFIGURADO**
-- ✅ **Redis database (EasyPanel) - CONFIGURADO**
+### Servicios Actuales ✅
+- ✅ **Chatwoot** (alvaro-chatwoot.5epeub.easypanel.host)
+- ✅ **Google Gemini API** (para AI Agent principal)
+- ✅ **OpenAI API** (para Whisper transcripción de voz) 🎤
+- ✅ **n8n instance**
+- ✅ **Postgres database** (EasyPanel) - Memoria persistente
+- ✅ **Redis database** (EasyPanel) - Sistema anti-spam
 
-### Servicios Necesarios (según funcionalidades futuras)
-- ⏳ OpenAI API (para Whisper, GPT-4.1-mini, embeddings) - Fase 2+
+### Servicios Opcionales (Fases Futuras)
 - ⏳ Airtable account (para CRM) - Opcional Fase 4
 - ⏳ Supabase account (para RAG) - Opcional Fase 4
+- ⏳ OpenAI GPT-4 (para subagentes avanzados) - Opcional
 
 ### Credenciales Configuradas ✅
 - [x] **Postgres connection** - Host: `alvaro_postgres`, DB: `alvaro`, Port: `5432`
 - [x] **Redis connection** - Host: `alvaro_redis`, Port: `6379`
-- [x] Chatwoot API Token
+- [x] **Chatwoot API Token** - `fLi8hi4RtbiBZs4okugg9VDL`
+- [x] **OpenAI API Key** - Configurada para Whisper 🎤
+- [x] **Google Gemini API** - Configurada para AI Agent
 
-### Credenciales Pendientes
-- [ ] OpenAI API Key (para voz + fases avanzadas)
-- [ ] Airtable API key (si se usa CRM)
-- [ ] Supabase API key + project URL (si se usa RAG)
+### Credenciales Pendientes (Solo para fases futuras)
+- [ ] Airtable API key (si se implementa CRM)
+- [ ] Supabase API key + project URL (si se implementa RAG)
 
 ---
 

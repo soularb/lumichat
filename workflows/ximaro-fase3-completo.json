@@ -1,0 +1,884 @@
+{
+  "name": "Chatwoot AI XIMARO - Fase 3 COMPLETO",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "5f69cc3b-b05a-45f9-ade2-65297716f6e6",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-1280, 256],
+      "id": "webhook-fase3",
+      "name": "Webhook1",
+      "webhookId": "5f69cc3b-b05a-45f9-ade2-65297716f6e6"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "filter-outgoing",
+              "leftValue": "={{ $json.body.message_type }}",
+              "rightValue": "outgoing",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-1072, 256],
+      "id": "if-outgoing-fase3",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extraer conversation_id y datos del mensaje\nconst body = $input.item.json.body;\n\nlet conversationId = null;\nlet messageContent = body.content || '';\nlet messageType = 'text';\nlet audioUrl = null;\n\n// Extraer conversation ID\nif (body.conversation) {\n  conversationId = body.conversation.id || \n                   body.conversation.conversation_id ||\n                   (body.conversation.messages && body.conversation.messages[0] && body.conversation.messages[0].conversation_id);\n}\n\nif (!conversationId) {\n  conversationId = body.conversation_id || body.id;\n}\n\n// Detectar si es mensaje de voz/audio\nif (body.attachments && body.attachments.length > 0) {\n  const attachment = body.attachments[0];\n  if (attachment.file_type === 'audio' || attachment.file_type === 'voice') {\n    messageType = 'audio';\n    audioUrl = attachment.data_url;\n    console.log('🎤 Mensaje de voz detectado:', audioUrl);\n  }\n}\n\nconsole.log('🔍 DEBUG - Datos extraídos:', {\n  conversationId,\n  messageType,\n  messageContent,\n  audioUrl\n});\n\nif (!conversationId) {\n  throw new Error(`❌ No se pudo encontrar conversation_id`);\n}\n\nreturn {\n  json: {\n    ...body,\n    extracted_conversation_id: conversationId,\n    message_type: messageType,\n    message_content: messageContent,\n    audio_url: audioUrl,\n    source_id: body.conversation?.contact_inbox?.source_id || conversationId\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-880, 160],
+      "id": "extraer-data-fase3",
+      "name": "Extraer Datos del Mensaje"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "check-audio",
+              "leftValue": "={{ $json.message_type }}",
+              "rightValue": "audio",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-688, 160],
+      "id": "if-audio-fase3",
+      "name": "¿Es Audio?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/audio/transcriptions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "file",
+              "value": "={{ $json.audio_url }}"
+            },
+            {
+              "name": "model",
+              "value": "whisper-1"
+            },
+            {
+              "name": "language",
+              "value": "es"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-496, 64],
+      "id": "whisper-transcribe-fase3",
+      "name": "🎤 Transcribir Audio (Whisper)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalizar el mensaje (ya sea texto directo o transcripción de audio)\nconst inputData = $input.item.json;\nlet finalContent = '';\n\n// Si viene de Whisper (audio transcrito)\nif (inputData.text) {\n  finalContent = inputData.text;\n  console.log('✅ Audio transcrito:', finalContent);\n} else {\n  // Si es texto directo\n  finalContent = inputData.message_content || inputData.content || '';\n  console.log('✅ Texto directo:', finalContent);\n}\n\nreturn {\n  json: {\n    ...inputData,\n    content: finalContent,\n    normalized_message: finalContent\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-304, 160],
+      "id": "normalizar-mensaje-fase3",
+      "name": "Normalizar Mensaje"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 🛡️ FASE 3: Sistema Anti-Spam con Redis\n// Guarda el mensaje en cola Redis con timestamp\n\nconst Redis = require('ioredis');\nconst redis = new Redis({\n  host: 'alvaro_redis',\n  port: 6379\n});\n\nconst sourceId = $input.item.json.source_id;\nconst messageId = $input.item.json.id || Date.now();\nconst timestamp = Date.now();\nconst content = $input.item.json.normalized_message;\n\nconst messageData = {\n  id: messageId,\n  timestamp: timestamp,\n  content: content,\n  source_id: sourceId\n};\n\n// Guardar en Redis con TTL de 10 segundos\nconst key = `chatwoot:queue:${sourceId}`;\nawait redis.setex(key, 10, JSON.stringify(messageData));\n\nconsole.log('🛡️ Mensaje guardado en Redis:', {\n  key,\n  messageId,\n  timestamp\n});\n\nredis.disconnect();\n\nreturn {\n  json: {\n    ...$input.item.json,\n    redis_key: key,\n    redis_timestamp: timestamp,\n    redis_message_id: messageId\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-112, 160],
+      "id": "redis-guardar-fase3",
+      "name": "🛡️ Redis: Guardar Mensaje"
+    },
+    {
+      "parameters": {
+        "amount": 7,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [80, 160],
+      "id": "wait-antispam-fase3",
+      "name": "⏱️ Wait 7seg (Anti-Spam)",
+      "webhookId": "wait-antispam-7seg"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 🛡️ FASE 3: Validar si este mensaje sigue siendo el último\n// Si llegó un mensaje más nuevo, cancelar procesamiento\n\nconst Redis = require('ioredis');\nconst redis = new Redis({\n  host: 'alvaro_redis',\n  port: 6379\n});\n\nconst currentMessageId = $input.item.json.redis_message_id;\nconst currentTimestamp = $input.item.json.redis_timestamp;\nconst redisKey = $input.item.json.redis_key;\n\n// Recuperar el mensaje actual en Redis\nconst storedData = await redis.get(redisKey);\n\nif (!storedData) {\n  console.log('⚠️ Mensaje ya expiró en Redis, continuar de todas formas');\n  redis.disconnect();\n  return { json: { ...$input.item.json, should_process: true } };\n}\n\nconst storedMessage = JSON.parse(storedData);\n\n// Si el mensaje en Redis tiene un ID diferente (más nuevo), cancelar\nif (storedMessage.id !== currentMessageId) {\n  console.log('🛑 Mensaje cancelado: llegó uno más nuevo', {\n    current: currentMessageId,\n    latest: storedMessage.id\n  });\n  redis.disconnect();\n  return { json: { ...$input.item.json, should_process: false } };\n}\n\nconsole.log('✅ Mensaje validado: es el último, procesar');\nredis.disconnect();\n\nreturn {\n  json: {\n    ...$input.item.json,\n    should_process: true\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [272, 160],
+      "id": "redis-validar-fase3",
+      "name": "🛡️ Redis: Validar Último Mensaje"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "check-should-process",
+              "leftValue": "={{ $json.should_process }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [464, 160],
+      "id": "if-should-process-fase3",
+      "name": "¿Procesar Mensaje?"
+    },
+    {
+      "parameters": {
+        "url": "=https://alvaro-chatwoot.5epeub.easypanel.host/api/v1/accounts/2/conversations/{{ $json.extracted_conversation_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "fLi8hi4RtbiBZs4okugg9VDL"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [656, 64],
+      "id": "obtener-labels-fase3",
+      "name": "Obtener Labels Actuales"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "filtro-humano-fase3",
+              "leftValue": "={{ $json.labels }}",
+              "rightValue": "humano",
+              "operator": {
+                "type": "array",
+                "operation": "notContains",
+                "rightType": "any"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [848, 64],
+      "id": "filtro-humano-fase3",
+      "name": "Filtro: No tiene etiqueta 'humano'"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "msg-content",
+              "name": "Mensaje",
+              "value": "={{ $('Normalizar Mensaje').item.json.normalized_message }}",
+              "type": "string"
+            },
+            {
+              "id": "conv-id",
+              "name": "Conversation_id",
+              "value": "={{ $('Normalizar Mensaje').item.json.extracted_conversation_id }}",
+              "type": "string"
+            },
+            {
+              "id": "acc-id",
+              "name": "Account_id",
+              "value": "2",
+              "type": "string"
+            },
+            {
+              "id": "cat-anterior",
+              "name": "Categoria_Anterior",
+              "value": "={{ $('Obtener Labels Actuales').item.json.labels && $('Obtener Labels Actuales').item.json.labels.length > 0 ? $('Obtener Labels Actuales').item.json.labels[0] : 'interes_inicial' }}",
+              "type": "string"
+            },
+            {
+              "id": "prompt-sistema",
+              "name": "Prompt_Sistema",
+              "value": "Eres el Asistente de Ventas de XIMARO, importadores directos con más de 15 años.\nObjetivo: convertir interesados en clientes mayoristas, principalmente como cliente en la web (Para eso necesitamos que nos pase su mail, el pdf es el último recurso) resolviendo dudas y calificando la conversación según los tags.\nQuiero que preguntes en los primeros msj si tiene alguna duda respecto a las compra o necesita alguna información de la empresa.\n\n📋 DATOS CLAVE:\n\n• Ubicación: Mendoza 1102 (esquina José Colombres), San Miguel de Tucumán\n• Horarios de atención:\n  - Lunes a viernes: 9 a 19 hs\n  - Sábados: 10 a 14 hs\n• Página web: www.ximaro.com.ar\n• Redes sociales: Instagram: ximaro.com.ar\n• Referencias Google: https://share.google/bx4Klc6O1eqve8O7e\n• Comunidad de WhatsApp: https://chat.whatsapp.com/KnsQS9s8AkwFBytwEDcgOX?mode=ems_copy_c\n• Catálogo PDF: www.ximaro.com.ar/catalogo.pdf\n• Tipo de ventas: Exclusivamente mayoristas\n\n🎯 CONDICIONES MAYORISTAS:\n• No pedimos monto mínimo en dinero\n• Primera compra: mínimo 10 productos (iguales o variados) o 3 celulares\n• Luego de la primera compra, podés seguir comprando sin restricción de monto\n\n💰 DESCUENTOS POR VOLUMEN:\n• $100.000 a $150.000 → 3%\n• $150.000 a $250.000 → 5%\n• $250.000 a $350.000 → 7%\n• $350.000 a $500.000 → 8%\n• $500.000 o más → 10%\n\n✅ GARANTÍA Y CAMBIOS:\n• Todos los productos cuentan con 3 meses de garantía\n• Si algún producto viene fallado/roto, se cambia sin costo adicional\n• Flexibilidad comercial: si el cliente no logra vender un producto, puede cambiarlo por otro de su preferencia sin costo\n\n💳 MEDIOS DE PAGO:\nEfectivo, Transferencia bancaria y Créditos personales\n\n📦 ENVÍOS:\n• Realizamos envíos a todo el país\n• Empresas de logística: Vía Cargo y Andreani\n• Recomendamos Andreani porque ofrecemos 30% de descuento en el envío (a sucursal o domicilio)\n• Los envíos se despachan el mismo día que impacta el pago\n• Tiempo de entrega estimado: 3 a 5 días hábiles\n\n📈 MARGEN DE GANANCIA RECOMENDADO:\n• Accesorios y artículos varios: entre 50% y 100%\n• Celulares: entre 10% y 15%\n\n🛍️ PRODUCTOS QUE VENDEMOS:\n• Celulares: Samsung, Xiaomi, POCO y otras marcas\n• Accesorios tecnológicos: cables, cargadores, auriculares, parlantes, TV Box, soportes, fundas y vidrios templados\n• Computación: teclados, mouses, periféricos y accesorios de oficina\n• Iluminación LED y decoración: lámparas, tiras LED, veladores, proyectores\n• Pequeños electrodomésticos: licuadoras, batidoras, planchas, cafeteras\n• Bienestar y cuidado personal: humidificadores, difusores, masajeadores\n• Hogar y bazar: vasos, botellas, termos, utensilios de cocina, organizadores\n• Papelería, juegos y juguetes: lapiceras, marcadores, pizarras, juegos de mesa\n• Artículos de tendencia y alta rotación: productos novedosos, virales y de temporada\n\n🎯 FLUJO CONVERSACIONAL:\n\n1. Saludo inicial:\n   \"👋 ¡Hola! Gracias por escribirnos a XIMARO. ¿Querés que te cuente cómo ser cliente mayorista?\"\n\n2. Explicar condiciones básicas y consultar nombre:\n   \"Para ser cliente mayorista, la primera compra debe ser 10 productos o 3 celulares\"\n   Solicitar nombre\n\n3. Preguntar ubicación y rubro:\n   \"¿De dónde sos y en qué rubro vendés?\"\n   • Si es Tucumán → invita a visitar el local, comparte web, pide mail\n   • Otra provincia → menciona envíos + 30% off Andreani, comparte web, pide mail\n\n4. Manejo de objeciones:\n   • No maneja tecnología → catálogo PDF + ayuda por WhatsApp\n   • Pide catálogo → recomendar web por precios actualizados, enviar PDF\n   • Prefiere otra forma → toma pedido por WhatsApp y arma cotización\n   • Minorista → aclarar que vendemos solo mayoristas\n   • Quiere confianza extra → referencias Google/Instagram o videollamada\n\n5. Al recibir mail:\n   • Agradecer, confirmar alta, invitar a sumarse a la comunidad de wsp y beneficios de la web\n   → Tag: contacto_obtenido\n\n6. Seguimientos si no responde:\n   • 23h: recordatorio + opción PDF\n   • Día 3: segundo recordatorio + oferta de ayuda, preguntar si sigue interesado\n\n7. Intención firme de compra:\n   • Agradecer, ofrecer productos tendencia/márgenes, derivar a humano\n   → Tag: seguimiento_humano\n\n8. Compra confirmada:\n   • Agradecer y confirmar acompañamiento del pedido\n   → Tag: venta_cerrada\n\n9. Consultas técnicas específicas:\n   • Derivar a humano\n   → Tag: atencion_especial\n\n📝 POLÍTICAS Y TONO:\n• No hacer recomendaciones de compra ni de artículos\n• Mensajes cortos y charla lo más orgánica posible\n• Cordial, profesional y amigable; emojis moderados\n• Recordar que trabajamos solo mayoristas\n• Preguntas fuera del ámbito comercial o irrespetuosas: \"Disculpá, no puedo ayudarte con eso. ¿Hay algo de la empresa o condiciones que quieras saber?\"\n• Si piden reunión/videollamada → Tag: pedido_reunion y responder que un asesor los contactará\n• Fuera de horario: reconocer mensaje y prometer respuesta dentro del horario\n\n🏷️ CLASIFICACIÓN (TAGS DISPONIBLES):\n\n1. **interes_inicial**:\n   - Primer contacto del cliente\n   - Pregunta por condiciones generales\n   - Consulta inicial sobre productos o precios\n   - Aún no ha proporcionado datos\n\n2. **contacto_obtenido**:\n   - Cliente proporcionó su email\n   - Datos de contacto recibidos\n   - Lista para dar de alta en el sistema\n\n3. **seguimiento_humano**:\n   - Intención firme de compra\n   - Necesita asesoramiento personalizado\n   - Consulta compleja que requiere atención humana\n   - Cliente muy interesado\n\n4. **venta_cerrada**:\n   - Compra confirmada\n   - Pedido realizado\n   - Cliente listo para procesar orden\n\n5. **atencion_especial**:\n   - Consultas técnicas específicas\n   - Problemas con productos\n   - Situaciones que requieren intervención especial\n   - Cliente molesto o insatisfecho\n\n6. **pedido_reunion**:\n   - Cliente solicita videollamada\n   - Pide reunión presencial\n   - Quiere hablar directamente con un representante\n\n💬 INSTRUCCIONES DE RESPUESTA:\n• Sé conciso (máximo 2-3 oraciones por mensaje)\n• Tono profesional pero cercano\n• Si no sabes algo, admítelo y ofrece derivar a un humano\n• Usa emojis ocasionalmente para calidez (máximo 1-2 por mensaje)\n• Siempre mantén el foco en obtener el email del cliente\n• Prioriza la web sobre el PDF\n• IMPORTANTE: Recuerda el contexto de la conversación anterior para dar respuestas coherentes\n\n🔤 FORMATO DE RESPUESTA:\nAl final de tu mensaje, en una línea separada, incluye:\nCATEGORÍA: [interes_inicial/contacto_obtenido/seguimiento_humano/venta_cerrada/atencion_especial/pedido_reunion]\nCONFIANZA: [0-100]%\n\nIMPORTANTE: Si el mensaje del cliente es muy corto (como \"?\", \"ok\", \"si\", etc.) y no cambia el contexto de la conversación, mantén la categoría anterior y responde con base al contexto previo.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1040, -32],
+      "id": "config-fase3",
+      "name": "Configuración"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.Prompt_Sistema }}\n\n---\n\nMensaje del cliente:\n{{ $json.Mensaje }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [1264, -32],
+      "id": "ai-agent-fase3",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [1136, 176],
+      "id": "gemini-model-fase3",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "8ODTFBq4L6sB50Xt",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Webhook1').item.json.body.conversation.contact_inbox.source_id }}",
+        "postgresNodeOptions": {
+          "host": "alvaro_postgres",
+          "database": "alvaro",
+          "user": "postgres",
+          "password": "6dad5e671a8d455d69e6",
+          "port": 5432
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [1280, 176],
+      "id": "postgres-memory-fase3",
+      "name": "Postgres Chat Memory"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extraer la respuesta del AI Agent con validación\nconst respuestaCompleta = $input.item.json.output || '';\nconst mensajeOriginal = ($('Configuración').item.json.Mensaje || '').toString();\nconst categoriaAnterior = $('Configuración').item.json.Categoria_Anterior || 'interes_inicial';\n\nlet categoria = categoriaAnterior;\nlet confianza = 70;\nlet respuestaLimpia = respuestaCompleta;\n\nconst mensajeCorto = mensajeOriginal.trim().length <= 3;\nconst mensajesAmbiguos = ['?', '??', 'ok', 'si', 'sí', 'no', 'dale', 'bien', 'gracias'];\nconst esMensajeAmbiguo = mensajesAmbiguos.includes(mensajeOriginal.trim().toLowerCase());\n\nconst categoriaMatch = respuestaCompleta.match(/CATEGORÍA:\\s*(interes_inicial|contacto_obtenido|seguimiento_humano|venta_cerrada|atencion_especial|pedido_reunion)/i);\nif (categoriaMatch) {\n  const nuevaCategoria = categoriaMatch[1].toLowerCase();\n  \n  if (mensajeCorto || esMensajeAmbiguo) {\n    const categoriasOrden = {\n      'interes_inicial': 1,\n      'contacto_obtenido': 2,\n      'seguimiento_humano': 3,\n      'venta_cerrada': 4,\n      'atencion_especial': 3,\n      'pedido_reunion': 3\n    };\n    \n    const ordenAnterior = categoriasOrden[categoriaAnterior] || 1;\n    const ordenNueva = categoriasOrden[nuevaCategoria] || 1;\n    \n    if (ordenNueva > ordenAnterior || ['atencion_especial', 'pedido_reunion'].includes(nuevaCategoria)) {\n      categoria = nuevaCategoria;\n    } else {\n      categoria = categoriaAnterior;\n    }\n  } else {\n    categoria = nuevaCategoria;\n  }\n  \n  respuestaLimpia = respuestaCompleta.replace(/CATEGORÍA:.*$/im, '').trim();\n}\n\nconst confianzaMatch = respuestaCompleta.match(/CONFIANZA:\\s*(\\d+)/i);\nif (confianzaMatch) {\n  confianza = parseInt(confianzaMatch[1]);\n  respuestaLimpia = respuestaLimpia.replace(/CONFIANZA:.*$/im, '').trim();\n}\n\nif (!categoriaMatch && !mensajeCorto && !esMensajeAmbiguo) {\n  const mensajeLower = mensajeOriginal.toLowerCase();\n  const respuestaLower = respuestaCompleta.toLowerCase();\n  \n  if (mensajeLower.includes('@') || respuestaLower.includes('alta') || respuestaLower.includes('registr')) {\n    categoria = 'contacto_obtenido';\n  }\n  else if (respuestaLower.includes('asesor') || respuestaLower.includes('contactar') || mensajeLower.includes('comprar')) {\n    categoria = 'seguimiento_humano';\n  }\n  else if (mensajeLower.includes('pedido') || mensajeLower.includes('orden') || respuestaLower.includes('confirmad')) {\n    categoria = 'venta_cerrada';\n  }\n  else if (mensajeLower.includes('problema') || mensajeLower.includes('reclamo') || mensajeLower.includes('urgente')) {\n    categoria = 'atencion_especial';\n  }\n  else if (mensajeLower.includes('reunión') || mensajeLower.includes('videollamada') || mensajeLower.includes('llamar')) {\n    categoria = 'pedido_reunion';\n  }\n  else {\n    categoria = categoriaAnterior;\n  }\n}\n\nconsole.log('🏷️ Clasificación XIMARO:', {\n  mensajeOriginal,\n  mensajeCorto,\n  esMensajeAmbiguo,\n  categoriaAnterior,\n  categoriaNueva: categoria,\n  confianza\n});\n\nreturn {\n  json: {\n    respuesta: respuestaLimpia,\n    categoria: categoria,\n    confianza: confianza,\n    conversation_id: $('Configuración').item.json.Conversation_id,\n    account_id: $('Configuración').item.json.Account_id\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1536, -128],
+      "id": "extraer-clasificacion-fase3",
+      "name": "Extraer Clasificación"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 🎭 FASE 2: Sistema de Formateo Inteligente para Humanización\nconst respuesta = $input.item.json.respuesta || '';\n\nfunction dividirEnOraciones(texto) {\n  return texto.match(/[^.!?]+[.!?]+/g) || [texto];\n}\n\nfunction agruparEnPartes(oraciones, maxPartes = 4) {\n  if (oraciones.length === 0) return [''];\n  \n  const partes = [];\n  const oracionesPorParte = Math.ceil(oraciones.length / Math.min(maxPartes, oraciones.length));\n  \n  for (let i = 0; i < oraciones.length; i += oracionesPorParte) {\n    const parte = oraciones.slice(i, i + oracionesPorParte).join(' ').trim();\n    if (parte) partes.push(parte);\n  }\n  \n  return partes;\n}\n\nif (respuesta.length < 150) {\n  console.log('✅ Respuesta corta, enviar en una sola parte');\n  return {\n    json: {\n      ...$input.item.json,\n      part_1: respuesta,\n      part_2: '',\n      part_3: '',\n      part_4: ''\n    }\n  };\n}\n\nconst oraciones = dividirEnOraciones(respuesta);\nconst partes = agruparEnPartes(oraciones, 4);\n\nconsole.log('🎭 Sistema de Formateo:', {\n  longitudOriginal: respuesta.length,\n  oraciones: oraciones.length,\n  partes: partes.length\n});\n\nreturn {\n  json: {\n    ...$input.item.json,\n    part_1: partes[0] || '',\n    part_2: partes[1] || '',\n    part_3: partes[2] || '',\n    part_4: partes[3] || ''\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, -128],
+      "id": "formateo-fase3",
+      "name": "Formatear Respuesta (Multi-Parte)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://alvaro-chatwoot.5epeub.easypanel.host/api/v1/accounts/{{ $json.account_id }}/conversations/{{ $json.conversation_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "fLi8hi4RtbiBZs4okugg9VDL"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "={{ $json.part_1 }}"
+            },
+            {
+              "name": "private",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1984, -128],
+      "id": "enviar-parte1-fase3",
+      "name": "Enviar Parte 1"
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2208, -128],
+      "id": "wait1-fase3",
+      "name": "Wait 2seg",
+      "webhookId": "wait-fase3-parte2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "check-part2-fase3",
+              "leftValue": "={{ $('Formatear Respuesta (Multi-Parte)').item.json.part_2 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2432, -128],
+      "id": "if-part2-fase3",
+      "name": "¿Hay Parte 2?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://alvaro-chatwoot.5epeub.easypanel.host/api/v1/accounts/{{ $('Formatear Respuesta (Multi-Parte)').item.json.account_id }}/conversations/{{ $('Formatear Respuesta (Multi-Parte)').item.json.conversation_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "fLi8hi4RtbiBZs4okugg9VDL"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "={{ $('Formatear Respuesta (Multi-Parte)').item.json.part_2 }}"
+            },
+            {
+              "name": "private",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2656, -224],
+      "id": "enviar-parte2-fase3",
+      "name": "Enviar Parte 2"
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2880, -224],
+      "id": "wait2-fase3",
+      "name": "Wait 2seg1",
+      "webhookId": "wait-fase3-parte3"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "check-part3-fase3",
+              "leftValue": "={{ $('Formatear Respuesta (Multi-Parte)').item.json.part_3 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [3104, -224],
+      "id": "if-part3-fase3",
+      "name": "¿Hay Parte 3?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://alvaro-chatwoot.5epeub.easypanel.host/api/v1/accounts/{{ $('Formatear Respuesta (Multi-Parte)').item.json.account_id }}/conversations/{{ $('Formatear Respuesta (Multi-Parte)').item.json.conversation_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "fLi8hi4RtbiBZs4okugg9VDL"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "={{ $('Formatear Respuesta (Multi-Parte)').item.json.part_3 }}"
+            },
+            {
+              "name": "private",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3328, -320],
+      "id": "enviar-parte3-fase3",
+      "name": "Enviar Parte 3"
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [3552, -320],
+      "id": "wait3-fase3",
+      "name": "Wait 2seg2",
+      "webhookId": "wait-fase3-parte4"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "check-part4-fase3",
+              "leftValue": "={{ $('Formatear Respuesta (Multi-Parte)').item.json.part_4 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [3776, -320],
+      "id": "if-part4-fase3",
+      "name": "¿Hay Parte 4?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://alvaro-chatwoot.5epeub.easypanel.host/api/v1/accounts/{{ $('Formatear Respuesta (Multi-Parte)').item.json.account_id }}/conversations/{{ $('Formatear Respuesta (Multi-Parte)').item.json.conversation_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "fLi8hi4RtbiBZs4okugg9VDL"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "={{ $('Formatear Respuesta (Multi-Parte)').item.json.part_4 }}"
+            },
+            {
+              "name": "private",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4000, -416],
+      "id": "enviar-parte4-fase3",
+      "name": "Enviar Parte 4"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [4224, -32],
+      "id": "merge-final-fase3",
+      "name": "Merge (Reunir flujos)"
+    },
+    {
+      "parameters": {
+        "url": "=https://alvaro-chatwoot.5epeub.easypanel.host/api/v1/accounts/2/conversations/{{ $('Formatear Respuesta (Multi-Parte)').item.json.conversation_id }}/labels",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "fLi8hi4RtbiBZs4okugg9VDL"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4448, -32],
+      "id": "obtener-labels-actuales-fase3",
+      "name": "🏷️ Obtener Labels Actuales"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 🏷️ FASE 3: Remover etiquetas anteriores antes de aplicar la nueva\nconst labelsActuales = $input.item.json.labels || [];\nconst nuevaCategoria = $('Formatear Respuesta (Multi-Parte)').item.json.categoria;\n\nconsole.log('🏷️ Etiquetas a remover:', labelsActuales);\nconsole.log('🏷️ Nueva categoría a aplicar:', nuevaCategoria);\n\n// Categorías que deben ser removidas\nconst categoriasXimaro = [\n  'interes_inicial',\n  'contacto_obtenido',\n  'seguimiento_humano',\n  'venta_cerrada',\n  'atencion_especial',\n  'pedido_reunion'\n];\n\n// Filtrar solo las etiquetas que son categorías de XIMARO\nconst labelsARemover = labelsActuales.filter(label => categoriasXimaro.includes(label));\n\nreturn {\n  json: {\n    ...$input.item.json,\n    labels_a_remover: labelsARemover,\n    nueva_categoria: nuevaCategoria,\n    conversation_id: $('Formatear Respuesta (Multi-Parte)').item.json.conversation_id\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4672, -32],
+      "id": "preparar-labels-fase3",
+      "name": "🏷️ Preparar Limpieza de Labels"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "check-labels-remover",
+              "leftValue": "={{ $json.labels_a_remover.length }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "number",
+                "operation": "larger"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [4896, -32],
+      "id": "if-hay-labels-fase3",
+      "name": "¿Hay Labels Anteriores?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Remover labels una por una usando Chatwoot API\nconst conversationId = $input.item.json.conversation_id;\nconst labelsARemover = $input.item.json.labels_a_remover || [];\n\nfor (const label of labelsARemover) {\n  const url = `https://alvaro-chatwoot.5epeub.easypanel.host/api/v1/accounts/2/conversations/${conversationId}/labels`;\n  \n  await $http.request({\n    method: 'POST',\n    url: url,\n    headers: {\n      'api_access_token': 'fLi8hi4RtbiBZs4okugg9VDL',\n      'Content-Type': 'application/json'\n    },\n    body: {\n      labels: [label]\n    }\n  });\n  \n  console.log(`🗑️ Etiqueta removida: ${label}`);\n}\n\nreturn { json: $input.item.json };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5120, -128],
+      "id": "remover-labels-fase3",
+      "name": "🗑️ Remover Labels Anteriores"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://alvaro-chatwoot.5epeub.easypanel.host/api/v1/accounts/2/conversations/{{ $('Formatear Respuesta (Multi-Parte)').item.json.conversation_id }}/labels",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "fLi8hi4RtbiBZs4okugg9VDL"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"labels\": [\"{{ $('Formatear Respuesta (Multi-Parte)').item.json.categoria }}\"]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [5344, -32],
+      "id": "aplicar-etiqueta-fase3",
+      "name": "✅ Aplicar Etiqueta Nueva"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond1-fase3",
+              "leftValue": "={{ $('Formatear Respuesta (Multi-Parte)').item.json.categoria }}",
+              "rightValue": "seguimiento_humano",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cond2-fase3",
+              "leftValue": "={{ $('Formatear Respuesta (Multi-Parte)').item.json.categoria }}",
+              "rightValue": "venta_cerrada",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cond3-fase3",
+              "leftValue": "={{ $('Formatear Respuesta (Multi-Parte)').item.json.categoria }}",
+              "rightValue": "atencion_especial",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cond4-fase3",
+              "leftValue": "={{ $('Formatear Respuesta (Multi-Parte)').item.json.categoria }}",
+              "rightValue": "pedido_reunion",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cond5-fase3",
+              "leftValue": "={{ $('Formatear Respuesta (Multi-Parte)').item.json.confianza }}",
+              "rightValue": "60",
+              "operator": {
+                "type": "number",
+                "operation": "smaller"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [5568, -32],
+      "id": "if-escalar-fase3",
+      "name": "¿Escalar a Humano?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://alvaro-chatwoot.5epeub.easypanel.host/api/v1/accounts/{{ $('Formatear Respuesta (Multi-Parte)').item.json.account_id }}/conversations/{{ $('Formatear Respuesta (Multi-Parte)').item.json.conversation_id }}/assignments",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "fLi8hi4RtbiBZs4okugg9VDL"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"assignee_id\": 1\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [5792, -144],
+      "id": "asignar-humano-fase3",
+      "name": "Asignar Agente Humano"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "nota-fase3",
+              "name": "nota",
+              "value": "✅ Proceso completado (Fase 3: Voz + Anti-Spam + Humanización)",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [5792, 80],
+      "id": "fin-normal-fase3",
+      "name": "Fin Normal"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook1": {"main": [[{"node": "If", "type": "main", "index": 0}]]},
+    "If": {"main": [[{"node": "Extraer Datos del Mensaje", "type": "main", "index": 0}]]},
+    "Extraer Datos del Mensaje": {"main": [[{"node": "¿Es Audio?", "type": "main", "index": 0}]]},
+    "¿Es Audio?": {"main": [[{"node": "🎤 Transcribir Audio (Whisper)", "type": "main", "index": 0}], [{"node": "Normalizar Mensaje", "type": "main", "index": 0}]]},
+    "🎤 Transcribir Audio (Whisper)": {"main": [[{"node": "Normalizar Mensaje", "type": "main", "index": 0}]]},
+    "Normalizar Mensaje": {"main": [[{"node": "🛡️ Redis: Guardar Mensaje", "type": "main", "index": 0}]]},
+    "🛡️ Redis: Guardar Mensaje": {"main": [[{"node": "⏱️ Wait 7seg (Anti-Spam)", "type": "main", "index": 0}]]},
+    "⏱️ Wait 7seg (Anti-Spam)": {"main": [[{"node": "🛡️ Redis: Validar Último Mensaje", "type": "main", "index": 0}]]},
+    "🛡️ Redis: Validar Último Mensaje": {"main": [[{"node": "¿Procesar Mensaje?", "type": "main", "index": 0}]]},
+    "¿Procesar Mensaje?": {"main": [[{"node": "Obtener Labels Actuales", "type": "main", "index": 0}], []]},
+    "Obtener Labels Actuales": {"main": [[{"node": "Filtro: No tiene etiqueta 'humano'", "type": "main", "index": 0}]]},
+    "Filtro: No tiene etiqueta 'humano'": {"main": [[{"node": "Configuración", "type": "main", "index": 0}]]},
+    "Configuración": {"main": [[{"node": "AI Agent", "type": "main", "index": 0}]]},
+    "AI Agent": {"main": [[{"node": "Extraer Clasificación", "type": "main", "index": 0}]]},
+    "Google Gemini Chat Model": {"ai_languageModel": [[{"node": "AI Agent", "type": "ai_languageModel", "index": 0}]]},
+    "Postgres Chat Memory": {"ai_memory": [[{"node": "AI Agent", "type": "ai_memory", "index": 0}]]},
+    "Extraer Clasificación": {"main": [[{"node": "Formatear Respuesta (Multi-Parte)", "type": "main", "index": 0}]]},
+    "Formatear Respuesta (Multi-Parte)": {"main": [[{"node": "Enviar Parte 1", "type": "main", "index": 0}]]},
+    "Enviar Parte 1": {"main": [[{"node": "Wait 2seg", "type": "main", "index": 0}]]},
+    "Wait 2seg": {"main": [[{"node": "¿Hay Parte 2?", "type": "main", "index": 0}]]},
+    "¿Hay Parte 2?": {"main": [[{"node": "Enviar Parte 2", "type": "main", "index": 0}], [{"node": "Merge (Reunir flujos)", "type": "main", "index": 0}]]},
+    "Enviar Parte 2": {"main": [[{"node": "Wait 2seg1", "type": "main", "index": 0}]]},
+    "Wait 2seg1": {"main": [[{"node": "¿Hay Parte 3?", "type": "main", "index": 0}]]},
+    "¿Hay Parte 3?": {"main": [[{"node": "Enviar Parte 3", "type": "main", "index": 0}], [{"node": "Merge (Reunir flujos)", "type": "main", "index": 1}]]},
+    "Enviar Parte 3": {"main": [[{"node": "Wait 2seg2", "type": "main", "index": 0}]]},
+    "Wait 2seg2": {"main": [[{"node": "¿Hay Parte 4?", "type": "main", "index": 0}]]},
+    "¿Hay Parte 4?": {"main": [[{"node": "Enviar Parte 4", "type": "main", "index": 0}], [{"node": "Merge (Reunir flujos)", "type": "main", "index": 2}]]},
+    "Enviar Parte 4": {"main": [[{"node": "Merge (Reunir flujos)", "type": "main", "index": 3}]]},
+    "Merge (Reunir flujos)": {"main": [[{"node": "🏷️ Obtener Labels Actuales", "type": "main", "index": 0}]]},
+    "🏷️ Obtener Labels Actuales": {"main": [[{"node": "🏷️ Preparar Limpieza de Labels", "type": "main", "index": 0}]]},
+    "🏷️ Preparar Limpieza de Labels": {"main": [[{"node": "¿Hay Labels Anteriores?", "type": "main", "index": 0}]]},
+    "¿Hay Labels Anteriores?": {"main": [[{"node": "🗑️ Remover Labels Anteriores", "type": "main", "index": 0}], [{"node": "✅ Aplicar Etiqueta Nueva", "type": "main", "index": 0}]]},
+    "🗑️ Remover Labels Anteriores": {"main": [[{"node": "✅ Aplicar Etiqueta Nueva", "type": "main", "index": 0}]]},
+    "✅ Aplicar Etiqueta Nueva": {"main": [[{"node": "¿Escalar a Humano?", "type": "main", "index": 0}]]},
+    "¿Escalar a Humano?": {"main": [[{"node": "Asignar Agente Humano", "type": "main", "index": 0}], [{"node": "Fin Normal", "type": "main", "index": 0}]]}
+  },
+  "active": true,
+  "settings": {"executionOrder": "v1"},
+  "versionId": "fase3-v1-completo",
+  "meta": {"instanceId": "0c7dd416da82309625c95022693181cfa297a1aac973e9693f78559f67847ca7"},
+  "id": "DRwt9G6OB1OztJp9-fase3-completo",
+  "tags": [
+    {"createdAt": "2025-10-31T15:37:04.287Z", "updatedAt": "2025-10-31T15:37:04.287Z", "id": "izqZPmJgPvJZmQ3f", "name": "ximaro"},
+    {"createdAt": "2025-10-28T18:53:33.417Z", "updatedAt": "2025-10-28T18:53:33.417Z", "id": "lfhMcSAoHYLNxq7y", "name": "chatwoot"},
+    {"createdAt": "2025-10-28T18:53:33.440Z", "updatedAt": "2025-10-28T18:53:33.440Z", "id": "tcXO7KqNL0HzOKdR", "name": "gemini"},
+    {"createdAt": "2025-10-28T18:53:33.430Z", "updatedAt": "2025-10-28T18:53:33.430Z", "id": "yK9MfyohShlt7Dgp", "name": "automation"},
+    {"createdAt": "2025-11-18T00:00:00.000Z", "updatedAt": "2025-11-18T00:00:00.000Z", "id": "fase3-completo", "name": "fase3"}
+  ]
+}
