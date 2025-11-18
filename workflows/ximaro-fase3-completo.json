@@ -1,6 +1,18 @@
 {
-  "name": "Chatwoot AI XIMARO - Fase 3 COMPLETO",
+  "name": "Chatwoot AI XIMARO - Fase 3 REORGANIZADO",
   "nodes": [
+    {
+      "parameters": {
+        "content": "## 📥 ENTRADA DE MENSAJES\n\n**Función**: Recibir webhooks de Chatwoot y filtrar mensajes salientes\n\n**Flujo**:\n1. Webhook recibe POST de Chatwoot\n2. Filtro descarta mensajes tipo 'outgoing'\n3. Extrae datos del mensaje (conversation_id, contenido, tipo)\n4. Detecta si es mensaje de voz/audio\n\n**Salida**: Mensaje procesado con datos extraídos",
+        "height": 380,
+        "width": 420
+      },
+      "name": "📥 Entrada",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [-1400, 80],
+      "typeVersion": 1,
+      "id": "sticky-entrada"
+    },
     {
       "parameters": {
         "httpMethod": "POST",
@@ -53,6 +65,18 @@
       "position": [-880, 160],
       "id": "extraer-data-fase3",
       "name": "Extraer Datos del Mensaje"
+    },
+    {
+      "parameters": {
+        "content": "## 🎤 PROCESAMIENTO DE VOZ\n\n**Función**: Transcribir mensajes de audio usando OpenAI Whisper\n\n**Flujo**:\n1. Detecta si es mensaje de audio\n2. Si es audio → Whisper transcribe a texto\n3. Si es texto → pasa directo\n4. Normaliza el mensaje final\n\n**Credenciales**: OpenAI API (Whisper)\n**Salida**: Texto normalizado listo para IA",
+        "height": 380,
+        "width": 460
+      },
+      "name": "🎤 Voz",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [-780, -260],
+      "typeVersion": 1,
+      "id": "sticky-voz"
     },
     {
       "parameters": {
@@ -128,6 +152,18 @@
     },
     {
       "parameters": {
+        "content": "## 🛡️ ANTI-SPAM CON REDIS\n\n**Función**: Evitar respuestas múltiples cuando el usuario escribe varios mensajes seguidos\n\n**Flujo**:\n1. Guarda mensaje en Redis con TTL 10seg\n2. Espera 7 segundos (ventana anti-spam)\n3. Valida si sigue siendo el último mensaje\n4. Si llegó uno más nuevo → cancela procesamiento\n5. Si es el último → continúa al IA\n\n**Infraestructura**: Redis (alvaro_redis:6379)\n**Salida**: Solo procesa el mensaje más reciente",
+        "height": 400,
+        "width": 520
+      },
+      "name": "🛡️ Anti-Spam",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [-200, -260],
+      "typeVersion": 1,
+      "id": "sticky-antispam"
+    },
+    {
+      "parameters": {
         "jsCode": "// 🛡️ FASE 3: Sistema Anti-Spam con Redis\n// Guarda el mensaje en cola Redis con timestamp\n\nconst Redis = require('ioredis');\nconst redis = new Redis({\n  host: 'alvaro_redis',\n  port: 6379\n});\n\nconst sourceId = $input.item.json.source_id;\nconst messageId = $input.item.json.id || Date.now();\nconst timestamp = Date.now();\nconst content = $input.item.json.normalized_message;\n\nconst messageData = {\n  id: messageId,\n  timestamp: timestamp,\n  content: content,\n  source_id: sourceId\n};\n\n// Guardar en Redis con TTL de 10 segundos\nconst key = `chatwoot:queue:${sourceId}`;\nawait redis.setex(key, 10, JSON.stringify(messageData));\n\nconsole.log('🛡️ Mensaje guardado en Redis:', {\n  key,\n  messageId,\n  timestamp\n});\n\nredis.disconnect();\n\nreturn {\n  json: {\n    ...$input.item.json,\n    redis_key: key,\n    redis_timestamp: timestamp,\n    redis_message_id: messageId\n  }\n};"
       },
       "type": "n8n-nodes-base.code",
@@ -190,6 +226,18 @@
     },
     {
       "parameters": {
+        "content": "## 🏷️ VALIDACIÓN Y FILTROS\n\n**Función**: Obtener labels actuales y validar que no tenga etiqueta 'humano'\n\n**Flujo**:\n1. Consulta labels de la conversación\n2. Si tiene label 'humano' → detiene flujo (agente humano ya asignado)\n3. Si no tiene 'humano' → continúa al IA\n\n**API**: Chatwoot GET /conversations/{id}\n**Salida**: Solo conversaciones para IA (sin humanos)",
+        "height": 360,
+        "width": 440
+      },
+      "name": "🏷️ Validación",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [560, -240],
+      "typeVersion": 1,
+      "id": "sticky-validacion"
+    },
+    {
+      "parameters": {
         "url": "=https://alvaro-chatwoot.5epeub.easypanel.host/api/v1/accounts/2/conversations/{{ $json.extracted_conversation_id }}",
         "sendHeaders": true,
         "headerParameters": {
@@ -238,6 +286,18 @@
       "position": [848, 64],
       "id": "filtro-humano-fase3",
       "name": "Filtro: No tiene etiqueta 'humano'"
+    },
+    {
+      "parameters": {
+        "content": "## 🤖 AGENTE IA XIMARO\n\n**Función**: Responder mensajes con IA usando contexto de conversación\n\n**Componentes**:\n- **Configuración**: Prepara prompt sistema + mensaje + categoría anterior\n- **AI Agent**: Motor LangChain con Google Gemini\n- **Memoria**: Postgres persistente por source_id\n- **Clasificación**: Extrae categoría y confianza de la respuesta\n\n**Categorías**:\n- interes_inicial, contacto_obtenido, seguimiento_humano\n- venta_cerrada, atencion_especial, pedido_reunion\n\n**Infraestructura**: Gemini API + Postgres Memory\n**Salida**: Respuesta + categoría + confianza",
+        "height": 480,
+        "width": 540
+      },
+      "name": "🤖 Agente IA",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [960, -280],
+      "typeVersion": 1,
+      "id": "sticky-ia"
     },
     {
       "parameters": {
@@ -341,6 +401,18 @@
     },
     {
       "parameters": {
+        "content": "## 🎭 FORMATEO MULTI-PARTE\n\n**Función**: Dividir respuestas largas en partes naturales (humanización)\n\n**Lógica**:\n- Respuestas < 150 chars → 1 parte\n- Respuestas largas → divide en oraciones\n- Agrupa hasta 4 partes máximo\n- Separa por puntos, signos de exclamación\n\n**Resultado**: Simula escritura humana progresiva\n**Salida**: part_1, part_2, part_3, part_4 (vacíos si no aplica)",
+        "height": 360,
+        "width": 420
+      },
+      "name": "🎭 Formateo",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [1680, -440],
+      "typeVersion": 1,
+      "id": "sticky-formateo"
+    },
+    {
+      "parameters": {
         "jsCode": "// 🎭 FASE 2: Sistema de Formateo Inteligente para Humanización\nconst respuesta = $input.item.json.respuesta || '';\n\nfunction dividirEnOraciones(texto) {\n  return texto.match(/[^.!?]+[.!?]+/g) || [texto];\n}\n\nfunction agruparEnPartes(oraciones, maxPartes = 4) {\n  if (oraciones.length === 0) return [''];\n  \n  const partes = [];\n  const oracionesPorParte = Math.ceil(oraciones.length / Math.min(maxPartes, oraciones.length));\n  \n  for (let i = 0; i < oraciones.length; i += oracionesPorParte) {\n    const parte = oraciones.slice(i, i + oracionesPorParte).join(' ').trim();\n    if (parte) partes.push(parte);\n  }\n  \n  return partes;\n}\n\nif (respuesta.length < 150) {\n  console.log('✅ Respuesta corta, enviar en una sola parte');\n  return {\n    json: {\n      ...$input.item.json,\n      part_1: respuesta,\n      part_2: '',\n      part_3: '',\n      part_4: ''\n    }\n  };\n}\n\nconst oraciones = dividirEnOraciones(respuesta);\nconst partes = agruparEnPartes(oraciones, 4);\n\nconsole.log('🎭 Sistema de Formateo:', {\n  longitudOriginal: respuesta.length,\n  oraciones: oraciones.length,\n  partes: partes.length\n});\n\nreturn {\n  json: {\n    ...$input.item.json,\n    part_1: partes[0] || '',\n    part_2: partes[1] || '',\n    part_3: partes[2] || '',\n    part_4: partes[3] || ''\n  }\n};"
       },
       "type": "n8n-nodes-base.code",
@@ -348,6 +420,18 @@
       "position": [1760, -128],
       "id": "formateo-fase3",
       "name": "Formatear Respuesta (Multi-Parte)"
+    },
+    {
+      "parameters": {
+        "content": "## 📤 ENVÍO ESCALONADO\n\n**Función**: Enviar partes del mensaje con delays (simula escritura humana)\n\n**Flujo**:\n1. Envía Parte 1 (siempre existe)\n2. Wait 2seg → ¿Hay Parte 2? → Envía\n3. Wait 2seg → ¿Hay Parte 3? → Envía\n4. Wait 2seg → ¿Hay Parte 4? → Envía\n5. Merge: reúne todos los caminos\n\n**Delays**: 2 segundos entre cada parte\n**API**: Chatwoot POST /messages\n**Salida**: Mensaje completo enviado de forma natural",
+        "height": 380,
+        "width": 480
+      },
+      "name": "📤 Envío",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [1900, -440],
+      "typeVersion": 1,
+      "id": "sticky-envio"
     },
     {
       "parameters": {
@@ -621,6 +705,18 @@
     },
     {
       "parameters": {
+        "content": "## 🏷️ GESTIÓN DE ETIQUETAS\n\n**Función**: Actualizar labels de conversación según clasificación IA\n\n**Flujo**:\n1. Obtiene labels actuales de la conversación\n2. Identifica categorías XIMARO a remover\n3. Si hay labels previos → los remueve\n4. Aplica la nueva categoría detectada\n\n**Categorías XIMARO**:\n- interes_inicial, contacto_obtenido\n- seguimiento_humano, venta_cerrada\n- atencion_especial, pedido_reunion\n\n**API**: Chatwoot /labels\n**Salida**: Conversación con label actualizado",
+        "height": 420,
+        "width": 520
+      },
+      "name": "🏷️ Labels",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [4340, -440],
+      "typeVersion": 1,
+      "id": "sticky-labels"
+    },
+    {
+      "parameters": {
         "url": "=https://alvaro-chatwoot.5epeub.easypanel.host/api/v1/accounts/2/conversations/{{ $('Formatear Respuesta (Multi-Parte)').item.json.conversation_id }}/labels",
         "sendHeaders": true,
         "headerParameters": {
@@ -716,6 +812,18 @@
       "position": [5344, -32],
       "id": "aplicar-etiqueta-fase3",
       "name": "✅ Aplicar Etiqueta Nueva"
+    },
+    {
+      "parameters": {
+        "content": "## 👤 CIERRE Y ESCALAMIENTO\n\n**Función**: Decidir si asignar a humano o finalizar proceso\n\n**Criterios para escalar a humano**:\n- Categoría: seguimiento_humano\n- Categoría: venta_cerrada\n- Categoría: atencion_especial\n- Categoría: pedido_reunion\n- Confianza < 60%\n\n**Acciones**:\n- Escala → Asigna a agente ID 1\n- No escala → Fin normal del flujo\n\n**API**: Chatwoot POST /assignments\n**Salida**: Conversación lista para atención",
+        "height": 400,
+        "width": 460
+      },
+      "name": "👤 Cierre",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [5480, -400],
+      "typeVersion": 1,
+      "id": "sticky-cierre"
     },
     {
       "parameters": {
@@ -871,7 +979,7 @@
   },
   "active": true,
   "settings": {"executionOrder": "v1"},
-  "versionId": "fase3-v1-completo",
+  "versionId": "fase3-v2-reorganizado",
   "meta": {"instanceId": "0c7dd416da82309625c95022693181cfa297a1aac973e9693f78559f67847ca7"},
   "id": "DRwt9G6OB1OztJp9-fase3-completo",
   "tags": [
