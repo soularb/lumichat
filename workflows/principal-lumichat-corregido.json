@@ -53,16 +53,75 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extraer datos del webhook de Chatwoot\nconst body = $input.item.json.body;\n\n// Datos básicos\nconst phoneNumber = body.conversation?.messages?.[0]?.sender?.phone_number || null;\nconst senderName = body.conversation?.messages?.[0]?.sender?.name || null;\nconst messageContent = body.content || null;\nconst sourceId = body.source_id;\nconst channel = body.conversation?.channel;\nconst conversationId = body.conversation?.messages?.[0]?.conversation_id;\n\n// 🔍 DETECCIÓN INTELIGENTE: Audio vs Texto\nlet tipoMensaje = 'texto';\nlet hasAudio = false;\n\n// Verificar si hay attachments de audio\nif (body.attachments && body.attachments.length > 0) {\n  const audioAttachment = body.attachments.find(att => \n    att.file_type === 'audio' || \n    att.file_type === 'voice' ||\n    att.file_type?.includes('audio')\n  );\n  \n  if (audioAttachment) {\n    tipoMensaje = 'audio';\n    hasAudio = true;\n    console.log('🎤 Audio detectado:', audioAttachment.file_type);\n  }\n}\n\n// Si no hay audio y hay contenido, es texto\nif (!hasAudio && messageContent) {\n  tipoMensaje = 'texto';\n}\n\nconsole.log('📊 Tipo detectado:', tipoMensaje);\n\nreturn {\n  json: {\n    Numero_Telefono: phoneNumber,\n    Nombre: senderName,\n    Mensaje: messageContent,\n    Tipo_Mensaje: tipoMensaje,  // 'texto' o 'audio'\n    Instancia: channel,\n    ID: sourceId,\n    'ID Chatwoot': conversationId,\n    has_audio: hasAudio\n  }\n};"
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7c0e7b4b-342a-43d9-98d0-d383de1d8cf7",
+              "name": "Numero_Telefono",
+              "value": "={{ $('Webhook').item.json.body.conversation.messages[0].sender.phone_number }}",
+              "type": "string"
+            },
+            {
+              "id": "03f5b82a-45b4-4465-84a3-095c31d864f0",
+              "name": "Nombre",
+              "value": "={{ $('Webhook').item.json.body.conversation.messages[0].sender.name }}",
+              "type": "string"
+            },
+            {
+              "id": "63566525-58bb-474e-b363-f218f196cd15",
+              "name": "Mensaje",
+              "value": "={{ $('Webhook').item.json.body.content }}",
+              "type": "string"
+            },
+            {
+              "id": "7a43af2b-3250-4d63-b289-61374bb3a1bc",
+              "name": "Tipo_Mensaje",
+              "value": "={{ $('Webhook').item.json.body.content_type }}",
+              "type": "string"
+            },
+            {
+              "id": "6f616e3b-5a54-45ae-89d6-5fe50910a117",
+              "name": "Instancia",
+              "value": "={{ $('Webhook').item.json.body.conversation.channel }}",
+              "type": "string"
+            },
+            {
+              "id": "e74683c5-3350-4987-a200-df59c30f658a",
+              "name": "ID",
+              "value": "={{ $('Webhook').item.json.body.source_id }}",
+              "type": "string"
+            },
+            {
+              "id": "17f90f42-58bf-48a3-8f80-34c0e32b58ba",
+              "name": "ID Chatwoot",
+              "value": "={{ $('Webhook').item.json.body.conversation.messages[0].conversation_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
       },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
       "position": [
         496,
         32
       ],
       "id": "95045f0e-d293-4d50-88b9-bcea12ec020b",
       "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 🔍 DETECCIÓN INTELIGENTE: Audio vs Texto\n// Corrige el bug de Chatwoot que marca audios como \"text\"\n\nconst data = $input.item.json;\nconst webhookBody = $node[\"Webhook\"].json.body;\n\nlet tipoMensaje = data.Tipo_Mensaje || 'texto';\nlet hasAudio = false;\n\n// Verificar si hay attachments de audio\nif (webhookBody.attachments && webhookBody.attachments.length > 0) {\n  const audioAttachment = webhookBody.attachments.find(att => \n    att.file_type === 'audio' || \n    att.file_type === 'voice' ||\n    att.file_type?.includes('audio')\n  );\n  \n  if (audioAttachment) {\n    tipoMensaje = 'audio';\n    hasAudio = true;\n    console.log('🎤 Audio detectado:', audioAttachment.file_type);\n  } else {\n    tipoMensaje = 'texto';\n  }\n} else if (data.Mensaje) {\n  tipoMensaje = 'texto';\n}\n\nconsole.log('📊 Tipo final detectado:', tipoMensaje);\n\n// Retornar datos con Tipo_Mensaje corregido\nreturn {\n  json: {\n    ...data,\n    Tipo_Mensaje: tipoMensaje,\n    has_audio: hasAudio\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        32
+      ],
+      "id": "detect-audio-code",
+      "name": "Detectar Audio"
     },
     {
       "parameters": {
@@ -459,6 +518,17 @@
       ]
     },
     "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Detectar Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detectar Audio": {
       "main": [
         [
           {
