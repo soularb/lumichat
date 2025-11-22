@@ -203,7 +203,7 @@
       "parameters": {
         "operation": "push",
         "list": "={{ $('Edit Fields1').item.json['ID Chatwoot'] }}",
-        "messageData": "={{ JSON.stringify({\n      message   : $json.Mensaje || $json[\"texto-voz\"],\n      sessionID : $node[\"Webhook\"].json.body.data.key.id,\n      date_time : $node[\"Webhook\"].json.body.data.messageTimestamp.toDateTime('s')\n}) }}\n",
+        "messageData": "={{ JSON.stringify({\n      message   : $json.Mensaje || $json[\"texto-voz\"],\n      sessionID : $node[\"Webhook\"].json.body.id || $node[\"Webhook\"].json.body.conversation.id,\n      date_time : $node[\"Webhook\"].json.body.created_at\n}) }}\n",
         "tail": true
       },
       "type": "n8n-nodes-base.redis",
@@ -367,23 +367,6 @@
     },
     {
       "parameters": {
-        "operation": "toBinary",
-        "sourceProperty": "mensaje_audio",
-        "options": {
-          "mimeType": "audio/mp3"
-        }
-      },
-      "type": "n8n-nodes-base.convertToFile",
-      "typeVersion": 1.1,
-      "position": [
-        1456,
-        288
-      ],
-      "id": "87597d22-f52c-4798-a1ac-cce5130573bb",
-      "name": "Convert to File"
-    },
-    {
-      "parameters": {
         "resource": "audio",
         "operation": "transcribe",
         "options": {}
@@ -446,8 +429,8 @@
           "assignments": [
             {
               "id": "c6e9b35b-0fd0-462f-a72e-3e3f5f7c6d30",
-              "name": "mensaje_audio",
-              "value": "={{ $('Webhook').item.json.body.data.message.base64 }}",
+              "name": "audio_url",
+              "value": "={{ $('Webhook').item.json.body.attachments[0].data_url }}",
               "type": "string"
             }
           ]
@@ -457,11 +440,31 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        1248,
-        240
+        1040,
+        288
       ],
       "id": "3f45d9ba-0ea6-4daf-bb0a-a957063ff579",
       "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.audio_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1248,
+        288
+      ],
+      "id": "download-audio-file",
+      "name": "Download Audio File"
     }
   ],
   "pinData": {},
@@ -568,7 +571,7 @@
         ]
       ]
     },
-    "Convert to File": {
+    "Download Audio File": {
       "main": [
         [
           {
@@ -605,7 +608,7 @@
       "main": [
         [
           {
-            "node": "Convert to File",
+            "node": "Download Audio File",
             "type": "main",
             "index": 0
           }
