@@ -112,6 +112,19 @@
     },
     {
       "parameters": {
+        "jsCode": "// ========================================\n// 🔍 DEBUG - VER VALORES REALES\n// ========================================\n\nconst data = $input.item.json;\nconst webhookBody = $node[\"Webhook\"].json.body;\n\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('📊 VALORES EXTRAÍDOS:');\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('Numero_Telefono:', data.Numero_Telefono);\nconsole.log('Nombre:', data.Nombre);\nconsole.log('Mensaje:', data.Mensaje);\nconsole.log('Tipo_Mensaje:', data.Tipo_Mensaje);\nconsole.log('Instancia:', data.Instancia);\nconsole.log('ID:', data.ID);\nconsole.log('ID Chatwoot:', data['ID Chatwoot']);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');\n\n// Verificar si hay attachments\nconsole.log('\\n📎 ATTACHMENTS:');\nif (webhookBody.attachments && webhookBody.attachments.length > 0) {\n  console.log('✅ HAY ATTACHMENTS:', webhookBody.attachments.length);\n  webhookBody.attachments.forEach((att, idx) => {\n    console.log(`\\n  Attachment ${idx + 1}:`);\n    console.log('    - file_type:', att.file_type);\n    console.log('    - data_url:', att.data_url);\n    console.log('    - extension:', att.extension);\n  });\n} else {\n  console.log('❌ NO hay attachments');\n}\n\n// Valores del webhook original\nconsole.log('\\n📥 VALORES DEL WEBHOOK:');\nconsole.log('content:', webhookBody.content);\nconsole.log('content_type:', webhookBody.content_type);\nconsole.log('message_type:', webhookBody.message_type);\n\nconsole.log('\\n🎯 ANÁLISIS PARA SWITCH:');\nconsole.log('¿Mensaje está vacío?', !data.Mensaje || data.Mensaje === '' || data.Mensaje === null);\nconsole.log('¿Tipo es text?', data.Tipo_Mensaje === 'text');\nconsole.log('¿Tipo contiene audio?', data.Tipo_Mensaje && data.Tipo_Mensaje.includes('audio'));\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n');\n\n// Retornar los datos sin modificar\nreturn { json: data };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        192
+      ],
+      "id": "debug-node-temp",
+      "name": "🔍 DEBUG - Ver Valores"
+    },
+    {
+      "parameters": {
         "rules": {
           "values": [
             {
@@ -492,6 +505,17 @@
       ]
     },
     "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "🔍 DEBUG - Ver Valores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 DEBUG - Ver Valores": {
       "main": [
         [
           {
