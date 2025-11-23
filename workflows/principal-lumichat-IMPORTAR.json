@@ -1,0 +1,840 @@
+{
+  "name": "Principal Lumichat debug",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "5f69cc3b-b05a-45f9-ade2-65297716f6e6",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -3152,
+        64
+      ],
+      "id": "18c3d759-8145-481f-b45e-8c0081748113",
+      "name": "Webhook",
+      "webhookId": "5f69cc3b-b05a-45f9-ade2-65297716f6e6"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e34f8033-c639-4f73-a070-d7d00f0fb52f",
+              "leftValue": "={{ $json.payload }}",
+              "rightValue": "humano",
+              "operator": {
+                "type": "array",
+                "operation": "notContains",
+                "rightType": "any"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -2720,
+        64
+      ],
+      "id": "870ed8e3-d512-403b-9164-3b7ec2cecdaf",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "url": "=https://alvaro-chatwoot.5epeub.easypanel.host//api/v1/accounts/2/conversations/{{ $json.body.conversation.messages[0].conversation_id }}/labels",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2880,
+        64
+      ],
+      "id": "0c5d1168-e400-4037-9b0c-43efd18f6d8e",
+      "name": "CHATWOOT",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CuOi2Ufx50BH8fwM",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "={{ $('Edit Fields3').item.json['ID Chatwoot'] }}",
+        "messageData": "={{ JSON.stringify({\n      message   : $json.Mensaje || $json[\"texto-voz\"],\n      sessionID : $node[\"Webhook\"].json.body.conversation.id,\n      date_time : $node[\"Webhook\"].json.body.created_at\n}) }}",
+        "tail": true
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -1952,
+        -112
+      ],
+      "id": "3687139f-eab9-45b0-8e46-faf61c4f9728",
+      "name": "Redis3",
+      "credentials": {
+        "redis": {
+          "id": "VJIQNrltgQDUN6S9",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "Mensaje",
+        "key": "={{ $('Edit Fields3').item.json['ID Chatwoot'] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -1728,
+        -112
+      ],
+      "id": "62927c9e-94c7-4060-b8b3-cf44e60db6d4",
+      "name": "Redis4",
+      "credentials": {
+        "redis": {
+          "id": "VJIQNrltgQDUN6S9",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b594f1da-51e8-47a4-a636-7928a73b69f8",
+              "name": "mensaje",
+              "value": "={{ $json.Mensaje.map(m => JSON.parse(m).message).join('\\n') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1056,
+        -240
+      ],
+      "id": "ca92752c-92cc-481e-9de0-3cab9559b5da",
+      "name": "Edit Fields5"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ String(JSON.parse($json.Mensaje.filter(m => m.trim().startsWith('{')).slice(-1)[0]).sessionID) }}",
+                    "rightValue": "={{ String($node[\"Webhook\"].json.body.conversation.id) }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals"
+                    },
+                    "id": "81c7205c-84c9-480e-8b5a-1a12b5ff7baa"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Ignoran"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "4fca4c39-e8bf-490b-8e2e-176c95d9156e",
+                    "leftValue": "={{ DateTime.fromISO(JSON.parse($json.Mensaje.filter(m => m.trim().startsWith('{')).slice(-1)[0]).date_time) }}",
+                    "rightValue": "={{ $now.minus(7, 'seconds') }}",
+                    "operator": {
+                      "type": "dateTime",
+                      "operation": "before"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ String(JSON.parse($json.Mensaje.filter(m => m.trim().startsWith('{')).slice(-1)[0]).sessionID) }}",
+                    "rightValue": "={{ String($node[\"Webhook\"].json.body.conversation.id) }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "9a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Continuamos"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Esperar"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -1504,
+        -224
+      ],
+      "id": "e4712a6e-f31f-4d4b-bf64-cf0345f8d481",
+      "name": "Switch3"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -1280,
+        -432
+      ],
+      "id": "42ebcdb4-2261-4466-8eda-e3aba2ad651a",
+      "name": "No Operation, do nothing3"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "key": "={{ $('If').item.json['ID Chatwoot'] }}"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -1248,
+        -224
+      ],
+      "id": "53f92da1-b37b-4d5b-b5a7-42015ce1b442",
+      "name": "Redis5",
+      "credentials": {
+        "redis": {
+          "id": "VJIQNrltgQDUN6S9",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        -1280,
+        304
+      ],
+      "id": "98eee68c-a407-41cd-a784-27704cccf7db",
+      "name": "Transcribe a recording",
+      "credentials": {
+        "openAiApi": {
+          "id": "W96tMzZXtsLNGkte",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3bd20e49-96eb-47bd-88cd-390d8e8063e0",
+              "name": "mensaje",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1056,
+        304
+      ],
+      "id": "3ac8eb38-8595-4a85-b015-5b64ef8b8179",
+      "name": "Edit Fields2"
+    },
+    {
+      "parameters": {
+        "amount": 7
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1280,
+        -16
+      ],
+      "id": "7da5343e-d627-4372-ba0e-736f1a28798c",
+      "name": "Espera 7 segs",
+      "webhookId": "7126b4cc-4572-4130-beed-48b16157babc"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c6e9b35b-0fd0-462f-a72e-3e3f5f7c6d30",
+              "name": "audio_url",
+              "value": "={{ $('Webhook').item.json.body.attachments[0].data_url }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1952,
+        320
+      ],
+      "id": "7a23c97b-3353-48f7-8cfe-af95f8bce3a1",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.audio_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1744,
+        320
+      ],
+      "id": "d6e2932c-63d4-4d69-85e0-685c46aba1f3",
+      "name": "Download Audio File"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7c0e7b4b-342a-43d9-98d0-d383de1d8cf7",
+              "name": "Numero_Telefono",
+              "value": "={{ $('Webhook').item.json.body.conversation.messages[0].sender.phone_number }}",
+              "type": "string"
+            },
+            {
+              "id": "03f5b82a-45b4-4465-84a3-095c31d864f0",
+              "name": "Nombre",
+              "value": "={{ $('Webhook').item.json.body.conversation.messages[0].sender.name }}",
+              "type": "string"
+            },
+            {
+              "id": "63566525-58bb-474e-b363-f218f196cd15",
+              "name": "Mensaje",
+              "value": "={{ $('Webhook').item.json.body.content }}",
+              "type": "string"
+            },
+            {
+              "id": "7a43af2b-3250-4d63-b289-61374bb3a1bc",
+              "name": "Tipo_Mensaje",
+              "value": "={{ $('Webhook').item.json.body.content_type }}",
+              "type": "string"
+            },
+            {
+              "id": "6f616e3b-5a54-45ae-89d6-5fe50910a117",
+              "name": "Instancia",
+              "value": "={{ $('Webhook').item.json.body.conversation.channel }}",
+              "type": "string"
+            },
+            {
+              "id": "e74683c5-3350-4987-a200-df59c30f658a",
+              "name": "ID",
+              "value": "={{ $('Webhook').item.json.body.source_id }}",
+              "type": "string"
+            },
+            {
+              "id": "17f90f42-58bf-48a3-8f80-34c0e32b58ba",
+              "name": "ID Chatwoot",
+              "value": "={{ $('Webhook').item.json.body.conversation.messages[0].conversation_id }}",
+              "type": "string"
+            },
+            {
+              "id": "dc15b4f2-d7bb-4e7d-b773-2cb3b11f9bac",
+              "name": "Audio File",
+              "value": "={{ $('Webhook').item.json.body.conversation.messages[0].attachments[0].data_url }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2528,
+        -16
+      ],
+      "id": "793f0501-1747-44db-b1c1-3bd8d19a0d7c",
+      "name": "Edit Fields3"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ae95b033-d524-4403-97a8-4221369550ba",
+              "leftValue": "={{ $json['Audio File'] }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2400,
+        -192
+      ],
+      "id": "a4a9b58f-05ec-4c95-8b0c-d76355f58044",
+      "name": "If"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -720,
+        16
+      ],
+      "id": "3cdd73af-9f9a-4272-b7e1-9576ab10d19e",
+      "name": "Merge1"
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "alvaro-n8n.5epeub.easypanel.host",
+            "user-agent": "rest-client/2.1.0 (linux-musl x86_64) ruby/3.4.4p34",
+            "content-length": "4373",
+            "accept": "application/json",
+            "accept-encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+            "content-type": "application/json",
+            "x-forwarded-for": "172.18.0.1",
+            "x-forwarded-host": "alvaro-n8n.5epeub.easypanel.host",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "0a46c69e17c3",
+            "x-real-ip": "172.18.0.1"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "account": {
+              "id": 2,
+              "name": "LumoLab"
+            },
+            "additional_attributes": {},
+            "content_attributes": {},
+            "content_type": "text",
+            "content": "buenas",
+            "conversation": {
+              "additional_attributes": {
+                "chat_id": 117531374,
+                "business_connection_id": null
+              },
+              "can_reply": true,
+              "channel": "Channel::Telegram",
+              "contact_inbox": {
+                "id": 7,
+                "contact_id": 7,
+                "inbox_id": 3,
+                "source_id": "117531374",
+                "created_at": "2025-11-22T17:37:45.751Z",
+                "updated_at": "2025-11-22T17:37:45.751Z",
+                "hmac_verified": false,
+                "pubsub_token": "5YqY49wMq3sjM9pQdyaVvyeV"
+              },
+              "id": 12,
+              "inbox_id": 3,
+              "messages": [
+                {
+                  "id": 341,
+                  "content": "buenas",
+                  "account_id": 2,
+                  "inbox_id": 3,
+                  "conversation_id": 12,
+                  "message_type": 0,
+                  "created_at": 1763857015,
+                  "updated_at": "2025-11-23T00:16:55.771Z",
+                  "private": false,
+                  "status": "sent",
+                  "source_id": "301",
+                  "content_type": "text",
+                  "content_attributes": {},
+                  "sender_type": "Contact",
+                  "sender_id": 7,
+                  "external_source_ids": {},
+                  "additional_attributes": {},
+                  "processed_message_content": "buenas",
+                  "sentiment": {},
+                  "conversation": {
+                    "assignee_id": 2,
+                    "unread_count": 10,
+                    "last_activity_at": 1763857015,
+                    "contact_inbox": {
+                      "source_id": "117531374"
+                    }
+                  },
+                  "sender": {
+                    "additional_attributes": {
+                      "username": "Kyle_arb",
+                      "language_code": "es",
+                      "social_telegram_user_id": 117531374,
+                      "social_telegram_user_name": "Kyle_arb"
+                    },
+                    "custom_attributes": {},
+                    "email": null,
+                    "id": 7,
+                    "identifier": null,
+                    "name": "Alvaro Bueno",
+                    "phone_number": null,
+                    "thumbnail": "https://alvaro-chatwoot.5epeub.easypanel.host/rails/active_storage/representations/redirect/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaHBMdz09IiwiZXhwIjpudWxsLCJwdXIiOiJibG9iX2lkIn19--34ca7bf20fa03866ed3498c594afb85b65f4c207/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaDdCem9MWm05eWJXRjBTU0lJYW5CbkJqb0dSVlE2RTNKbGMybDZaVjkwYjE5bWFXeHNXd2RwQWZvdyIsImV4cCI6bnVsbCwicHVyIjoidmFyaWF0aW9uIn19--992ded79e2596a585b0a0b8b1ce32867e1f8021e/file_4.jpg",
+                    "blocked": false,
+                    "type": "contact"
+                  }
+                }
+              ],
+              "labels": [],
+              "meta": {
+                "sender": {
+                  "additional_attributes": {
+                    "username": "Kyle_arb",
+                    "language_code": "es",
+                    "social_telegram_user_id": 117531374,
+                    "social_telegram_user_name": "Kyle_arb"
+                  },
+                  "custom_attributes": {},
+                  "email": null,
+                  "id": 7,
+                  "identifier": null,
+                  "name": "Alvaro Bueno",
+                  "phone_number": null,
+                  "thumbnail": "https://alvaro-chatwoot.5epeub.easypanel.host/rails/active_storage/representations/redirect/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaHBMdz09IiwiZXhwIjpudWxsLCJwdXIiOiJibG9iX2lkIn19--34ca7bf20fa03866ed3498c594afb85b65f4c207/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaDdCem9MWm05eWJXRjBTU0lJYW5CbkJqb0dSVlE2RTNKbGMybDZaVjkwYjE5bWFXeHNXd2RwQWZvdyIsImV4cCI6bnVsbCwicHVyIjoidmFyaWF0aW9uIn19--992ded79e2596a585b0a0b8b1ce32867e1f8021e/file_4.jpg",
+                  "blocked": false,
+                  "type": "contact"
+                },
+                "assignee": {
+                  "id": 2,
+                  "name": "Alvaro",
+                  "available_name": "Alvaro",
+                  "avatar_url": "",
+                  "type": "user",
+                  "availability_status": null,
+                  "thumbnail": ""
+                },
+                "team": null,
+                "hmac_verified": false
+              },
+              "status": "open",
+              "custom_attributes": {},
+              "snoozed_until": null,
+              "unread_count": 10,
+              "first_reply_created_at": "2025-11-23T00:08:09.059Z",
+              "priority": null,
+              "waiting_since": 1763856547,
+              "agent_last_seen_at": 1763856558,
+              "contact_last_seen_at": 0,
+              "last_activity_at": 1763857015,
+              "timestamp": 1763857015,
+              "created_at": 1763833070,
+              "updated_at": 1763857015.774404
+            },
+            "created_at": "2025-11-23T00:16:55.771Z",
+            "id": 341,
+            "inbox": {
+              "id": 3,
+              "name": "lumalabbot"
+            },
+            "message_type": "incoming",
+            "private": false,
+            "sender": {
+              "account": {
+                "id": 2,
+                "name": "LumoLab"
+              },
+              "additional_attributes": {
+                "username": "Kyle_arb",
+                "language_code": "es",
+                "social_telegram_user_id": 117531374,
+                "social_telegram_user_name": "Kyle_arb"
+              },
+              "avatar": "https://alvaro-chatwoot.5epeub.easypanel.host/rails/active_storage/representations/redirect/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaHBMdz09IiwiZXhwIjpudWxsLCJwdXIiOiJibG9iX2lkIn19--34ca7bf20fa03866ed3498c594afb85b65f4c207/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaDdCem9MWm05eWJXRjBTU0lJYW5CbkJqb0dSVlE2RTNKbGMybDZaVjkwYjE5bWFXeHNXd2RwQWZvdyIsImV4cCI6bnVsbCwicHVyIjoidmFyaWF0aW9uIn19--992ded79e2596a585b0a0b8b1ce32867e1f8021e/file_4.jpg",
+              "custom_attributes": {},
+              "email": null,
+              "id": 7,
+              "identifier": null,
+              "name": "Alvaro Bueno",
+              "phone_number": null,
+              "thumbnail": "https://alvaro-chatwoot.5epeub.easypanel.host/rails/active_storage/representations/redirect/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaHBMdz09IiwiZXhwIjpudWxsLCJwdXIiOiJibG9iX2lkIn19--34ca7bf20fa03866ed3498c594afb85b65f4c207/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaDdCem9MWm05eWJXRjBTU0lJYW5CbkJqb0dSVlE2RTNKbGMybDZaVjkwYjE5bWFXeHNXd2RwQWZvdyIsImV4cCI6bnVsbCwicHVyIjoidmFyaWF0aW9uIn19--992ded79e2596a585b0a0b8b1ce32867e1f8021e/file_4.jpg",
+              "blocked": false
+            },
+            "source_id": "301",
+            "event": "message_created"
+          },
+          "webhookUrl": "https://alvaro-n8n.5epeub.easypanel.host/webhook/5f69cc3b-b05a-45f9-ade2-65297716f6e6",
+          "executionMode": "production"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "CHATWOOT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CHATWOOT": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis3": {
+      "main": [
+        [
+          {
+            "node": "Redis4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis4": {
+      "main": [
+        [
+          {
+            "node": "Switch3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch3": {
+      "main": [
+        [
+          {
+            "node": "No Operation, do nothing3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Redis5",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Espera 7 segs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis5": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Audio File": {
+      "main": [
+        [
+          {
+            "node": "Transcribe a recording",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe a recording": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Espera 7 segs": {
+      "main": [
+        [
+          {
+            "node": "Redis4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Download Audio File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields3": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Redis3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields5": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields2": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "2328a8cd-3516-45a5-95e3-b699c0b22fc4",
+  "meta": {
+    "instanceId": "0c7dd416da82309625c95022693181cfa297a1aac973e9693f78559f67847ca7"
+  },
+  "id": "vOchtEgh7ebt6Jke",
+  "tags": []
+}
