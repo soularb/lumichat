@@ -77,7 +77,7 @@
       "parameters": {
         "operation": "push",
         "list": "={{ $('Edit Fields3').item.json['ID Chatwoot'] }}",
-        "messageData": "={{ JSON.stringify({\n      message   : $json.Mensaje || $json[\"texto-voz\"],\n      sessionID : $node[\"Webhook\"].json.body.id || $node[\"Webhook\"].json.body.conversation.id,\n      date_time : $node[\"Webhook\"].json.body.created_at\n}) }}\n",
+        "messageData": "={{ JSON.stringify({\n      message   : $json.Mensaje || $json[\"texto-voz\"],\n      sessionID : $node[\"Webhook\"].json.body.conversation.id,\n      date_time : $node[\"Webhook\"].json.body.created_at\n}) }}\n",
         "tail": true
       },
       "type": "n8n-nodes-base.redis",
