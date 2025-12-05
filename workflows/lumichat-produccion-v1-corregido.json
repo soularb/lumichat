@@ -1,0 +1,1017 @@
+{
+  "name": "Lumi 23.11 ultimo estable",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "5f69cc3b-b05a-45f9-ade2-65297716f6e6",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1440,
+        336
+      ],
+      "id": "1b3dbc1e-199b-4516-920e-54680cdb74f3",
+      "name": "Webhook",
+      "webhookId": "5f69cc3b-b05a-45f9-ade2-65297716f6e6"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e34f8033-c639-4f73-a070-d7d00f0fb52f",
+              "leftValue": "={{ $json.payload }}",
+              "rightValue": "humano",
+              "operator": {
+                "type": "array",
+                "operation": "notContains",
+                "rightType": "any"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -1008,
+        336
+      ],
+      "id": "4bc9305c-ad6c-4db2-bbd5-f11b4e412f50",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "url": "=https://alvaro-chatwoot.5epeub.easypanel.host//api/v1/accounts/2/conversations/{{ $json.body.conversation.messages[0].conversation_id }}/labels",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1168,
+        336
+      ],
+      "id": "a17d8ed0-e88e-4f8b-8ee5-2be0657d9280",
+      "name": "CHATWOOT",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CuOi2Ufx50BH8fwM",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "={{ $('Edit Fields3').item.json['ID Chatwoot'] }}",
+        "messageData": "={{ JSON.stringify({\n      message   : $json.Mensaje || $json[\"texto-voz\"],\n      sessionID : $node[\"Webhook\"].json.body.conversation.id,\n      date_time : $node[\"Webhook\"].json.body.created_at\n}) }}",
+        "tail": true
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        160
+      ],
+      "id": "d77447e3-bdbe-438b-afd3-a4e4ce786142",
+      "name": "Redis3",
+      "credentials": {
+        "redis": {
+          "id": "VJIQNrltgQDUN6S9",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "Mensaje",
+        "key": "={{ $('Edit Fields3').item.json['ID Chatwoot'] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        160
+      ],
+      "id": "caef4f45-6caa-4521-b166-26a89a8429a4",
+      "name": "Redis4",
+      "credentials": {
+        "redis": {
+          "id": "VJIQNrltgQDUN6S9",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b594f1da-51e8-47a4-a636-7928a73b69f8",
+              "name": "mensaje",
+              "value": "={{ $json.Mensaje.map(m => JSON.parse(m).message).join('\\n') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        656,
+        32
+      ],
+      "id": "fdb6a4a1-528d-4e1c-85d3-6f16b3783311",
+      "name": "Edit Fields5"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ String(JSON.parse($json.Mensaje.filter(m => m.trim().startsWith('{')).slice(-1)[0]).sessionID) }}",
+                    "rightValue": "={{ String($node[\"Webhook\"].json.body.conversation.id) }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals"
+                    },
+                    "id": "81c7205c-84c9-480e-8b5a-1a12b5ff7baa"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Ignoran"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "4fca4c39-e8bf-490b-8e2e-176c95d9156e",
+                    "leftValue": "={{ DateTime.fromISO(JSON.parse($json.Mensaje.filter(m => m.trim().startsWith('{')).slice(-1)[0]).date_time) }}",
+                    "rightValue": "={{ $now.minus(7, 'seconds') }}",
+                    "operator": {
+                      "type": "dateTime",
+                      "operation": "before"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ String(JSON.parse($json.Mensaje.filter(m => m.trim().startsWith('{')).slice(-1)[0]).sessionID) }}",
+                    "rightValue": "={{ String($node[\"Webhook\"].json.body.conversation.id) }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "9a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Continuamos"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Esperar"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        208,
+        48
+      ],
+      "id": "cb466271-cf37-4344-a8b7-fe08d818dd9d",
+      "name": "Switch3"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        432,
+        -160
+      ],
+      "id": "5f2bd2bb-1089-49c6-97d4-270632b5278c",
+      "name": "No Operation, do nothing3"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "key": "={{ $('If').item.json['ID Chatwoot'] }}"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        464,
+        48
+      ],
+      "id": "2711c0bf-26a0-4e03-9b0e-dcb464938946",
+      "name": "Redis5",
+      "credentials": {
+        "redis": {
+          "id": "VJIQNrltgQDUN6S9",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        432,
+        576
+      ],
+      "id": "5e83b373-7c25-4f92-9e5d-d2f1cd2cbd57",
+      "name": "Transcribe a recording",
+      "credentials": {
+        "openAiApi": {
+          "id": "W96tMzZXtsLNGkte",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3bd20e49-96eb-47bd-88cd-390d8e8063e0",
+              "name": "mensaje",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        656,
+        576
+      ],
+      "id": "93d68521-85eb-4cd2-8027-8caf8a7e6e05",
+      "name": "Edit Fields2"
+    },
+    {
+      "parameters": {
+        "amount": 7
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        432,
+        256
+      ],
+      "id": "020ef8f7-f0f9-4c70-9556-b2186ab19652",
+      "name": "Espera 7 segs",
+      "webhookId": "7126b4cc-4572-4130-beed-48b16157babc"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c6e9b35b-0fd0-462f-a72e-3e3f5f7c6d30",
+              "name": "audio_url",
+              "value": "={{ $('Webhook').item.json.body.attachments[0].data_url }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -240,
+        592
+      ],
+      "id": "db911a09-7b54-484f-b781-5cf7be92d3e5",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.audio_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -32,
+        592
+      ],
+      "id": "4ec515ab-a108-40ee-99a9-5e227339e2f4",
+      "name": "Download Audio File"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7c0e7b4b-342a-43d9-98d0-d383de1d8cf7",
+              "name": "Numero_Telefono",
+              "value": "={{ $('Webhook').item.json.body.conversation.messages[0].sender.phone_number }}",
+              "type": "string"
+            },
+            {
+              "id": "03f5b82a-45b4-4465-84a3-095c31d864f0",
+              "name": "Nombre",
+              "value": "={{ $('Webhook').item.json.body.conversation.messages[0].sender.name }}",
+              "type": "string"
+            },
+            {
+              "id": "63566525-58bb-474e-b363-f218f196cd15",
+              "name": "Mensaje",
+              "value": "={{ $('Webhook').item.json.body.content }}",
+              "type": "string"
+            },
+            {
+              "id": "7a43af2b-3250-4d63-b289-61374bb3a1bc",
+              "name": "Tipo_Mensaje",
+              "value": "={{ $('Webhook').item.json.body.content_type }}",
+              "type": "string"
+            },
+            {
+              "id": "6f616e3b-5a54-45ae-89d6-5fe50910a117",
+              "name": "Instancia",
+              "value": "={{ $('Webhook').item.json.body.conversation.channel }}",
+              "type": "string"
+            },
+            {
+              "id": "e74683c5-3350-4987-a200-df59c30f658a",
+              "name": "ID",
+              "value": "={{ $('Webhook').item.json.body.source_id }}",
+              "type": "string"
+            },
+            {
+              "id": "17f90f42-58bf-48a3-8f80-34c0e32b58ba",
+              "name": "ID Chatwoot",
+              "value": "={{ $('Webhook').item.json.body.conversation.messages[0].conversation_id }}",
+              "type": "string"
+            },
+            {
+              "id": "dc15b4f2-d7bb-4e7d-b773-2cb3b11f9bac",
+              "name": "Audio File",
+              "value": "={{ $('Webhook').item.json.body.conversation.messages[0].attachments[0].data_url }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -816,
+        256
+      ],
+      "id": "f0597aa5-47eb-47ae-8cb2-d3c233265c6d",
+      "name": "Edit Fields3"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ae95b033-d524-4403-97a8-4221369550ba",
+              "leftValue": "={{ $json['Audio File'] }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -688,
+        80
+      ],
+      "id": "bf00f62a-ae67-4363-8d6d-db4ea06a3d06",
+      "name": "If"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        992,
+        288
+      ],
+      "id": "dfd60af4-730f-49dc-92bf-98d032d7aeb0",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        512
+      ],
+      "id": "8140406d-8788-4f63-aaec-8537d3888462",
+      "name": "Think"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        1456,
+        544
+      ],
+      "id": "9646f44c-e391-4786-9417-44051109666f",
+      "name": "Calculator"
+    },
+    {
+      "parameters": {
+        "tableName": {
+          "__rl": true,
+          "value": "rpc/buscar_documentos_similares",
+          "mode": "list",
+          "cachedResultName": "rpc/buscar_documentos_similares"
+        },
+        "options": {
+          "queryName": "match_documentos_empresa"
+        }
+      },
+      "id": "1146ac5c-4d48-44e3-ab3a-fe8fb7a23e81",
+      "name": "Supabase Vector Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1,
+      "position": [
+        1488,
+        752
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "ZlevNyva2cSr978U",
+          "name": "Supabase Pruebas"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "b988c0b7-421e-459b-a9d6-e2376f6fef95",
+      "name": "Embeddings OpenAI",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.1,
+      "position": [
+        1568,
+        960
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "W96tMzZXtsLNGkte",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "data",
+        "description": "Retrieve information"
+      },
+      "id": "32c9d756-9422-4900-a799-29a5ebde21f7",
+      "name": "Base de datos",
+      "type": "@n8n/n8n-nodes-langchain.toolVectorStore",
+      "typeVersion": 1,
+      "position": [
+        1584,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "options": {}
+      },
+      "id": "942ae39d-8365-46a4-8654-81a6444c79e7",
+      "name": "OpenAI Chat Model2",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        1072,
+        544
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "W96tMzZXtsLNGkte",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Edit Fields3').item.json['ID Chatwoot'] }}",
+        "contextWindowLength": 15
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        1232,
+        672
+      ],
+      "id": "8837bf3e-0366-4339-ab51-574727221236",
+      "name": "Postgres Chat Memory",
+      "credentials": {
+        "postgres": {
+          "id": "uQIy9yFeRKH0id9T",
+          "name": "Postgres account supa"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Nombre del usuario: {{ $('Edit Fields3').item.json.Nombre }}\nMensaje: {{ $json.mensaje }}\nConversacion ID: }{{ $('Edit Fields3').item.json['ID Chatwoot'] }}",
+        "options": {
+          "systemMessage": "=Eres el Asistente de Ventas de XIMARO, importadores directos con más de 15 años. \nObjetivo: convertir interesados en clientes mayoristas, principalmente como cliente en la web (Para eso necesitamos que nos pase su mail, el pdf es el ultimo recurso) resolviendo dudas y calificando la conversación según los tags.\nquiero que preguntes en los primeros  msj si tiene alguna duda respecto a las compra o necesita alguna informacion de la empresa\n\nDatos clave:\n\n* Ubicación: Mendoza 1102 (esquina José Colombres), San Miguel de Tucumán\n* Horarios de atención: Lunes a viernes: 9 a 19 hs\nSábados: 10 a 14 hs\n•Página web: www.ximaro.com.ar\n•Redes sociales: Instagram: ximaro.com.ar, Referencias: Google https://share.google/bx4Klc6O1eqve8O7e\n•Comunidad de wsp: https://chat.whatsapp.com/KnsQS9s8AkwFBytwEDcgOX?mode=ems_copy_c\n•Catalogo PDF: Link www.ximaro.com.ar/catalogo.pdf\n•Tipo de ventas: Exclusivamente mayoristas\n•Condiciones para ser cliente mayorista: No pedimos monto mínimo en dinero.\nPrimera compra: mínimo 10 productos (iguales o variados) o 3 celulares.\nLuego de la primera compra, podés seguir comprando sin restricción de monto.\n•Descuentos por volumen de compra\n$100.000 a $150.000 → 3%\n$150.000 a $250.000 → 5%\n$250.000 a $350.000 → 7%\n$350.000 a $500.000 → 8%\n$500.000 o más → 10%\n•Garantía y cambios\nTodos los productos cuentan con 3 meses de garantía.\nSi algún producto viene fallado/roto, se cambia sin costo adicional.\nFlexibilidad comercial: si el cliente no logra vender un producto, puede cambiarlo por otro de su preferencia sin costo.\n•Medios de pago\nEfectivo,Transferencia bancaria y Créditos personales\n* Envíos: Realizamos envíos a todo el país. Empresas de logística: Vía Cargo y Andreani.\nRecomendamos Andreani porque ofrecemos a nuestros clientes 30% de descuento en el envío (a sucursal o domicilio).\nLos envíos se despachan el mismo día que impacta el pago.\nTiempo de entrega estimado: 3 a 5 días hábiles.\n•Margen de ganancia recomendado\nAccesorios y artículos varios: entre 50% y 100%.\nCelulares: entre 10% y 15%.\n•Tipos de productos que vendemos\nCelulares: amplia variedad de modelos Samsung, Xiaomi, POCO y otras marcas.\nAccesorios tecnológicos: cables, cargadores, auriculares, parlantes, TV Box, soportes, fundas y vidrios templados.\nComputación: teclados, mouses, periféricos y accesorios de oficina.\nIluminación LED y decoración: lámparas de escritorio, tiras LED, veladores, proyectores y luminarias decorativas.\nPequeños electrodomésticos: licuadoras, batidoras, planchas, cafeteras y artículos prácticos para el hogar.\nBienestar y cuidado personal: humidificadores, difusores, masajeadores y artículos de relax.\nHogar y bazar: vasos, botellas, termos, utensilios de cocina, organizadores y más.\nPapelería, juegos y juguetes: lapiceras, marcadores, pizarras, juegos de mesa y juguetes electrónicos.\nArtículos de tendencia y alta rotación: productos novedosos, virales y de temporada que marcan la diferencia en ventas.\n•Enfoque de negocio:\nEn XIMARO siempre buscamos productos novedosos, de alta rotación y con fuerte demanda que permitan a nuestros clientes obtener buenos márgenes de ganancia y renovar constantemente su oferta.\n* Si solicita catalogo puedes invitarlo a la pagina web donde estan todos los productos con el stock disponible y los precios mayorisdta actualizados\n\nFLUJO CONVERSACIONAL  \n1. Saludo inicial  \n   "👋 ¡Hola! Gracias por escribirnos a XIMARO. ¿Querés que te cuente cómo ser cliente mayorista?"\n\n2. Explicar condiciones básicas  y consultar nombre\n   \"Para ser cliente mayorista, la primera compra debe ser 10 productos o 3 celulares\" \nSolicitar nombre\n\n3. Preguntar ubicación y rubro  \n   "¿De dónde sos y en qué rubro vendés?"  \n   • Si es Tucumán → invita a visitar el local, comparte web, pide mail para alta.  \n   • Otra provincia → menciona envíos + 30 % off Andreani, comparte web, pide mail.\n\n4. Manejo de objeciones  \n   – No maneja tecnología → catálogo PDF + ayuda por WhatsApp.  \n   – Pide catálogo →  recomendar web por precios actualizados. enviar PDF  \n   – Prefiere otra forma → toma pedido por WhatsApp y arma cotización.  \n   – Minorista → aclarar que vendemos solo mayoristas.  \n   – Quiere confianza extra → referencias Google/Instagram o videollamada.\n\n5. Al recibir mail  \n   • Agradecer, confirmar alta, invitar a sumarse a la comunidad de wsp y beneficios de la web.  \n   → Tag: Contacto Obtenido\n\n6. Seguimientos si no responde  \n   • 23 h: recordatorio + opción PDF.  \n   • Día 3: segundo recordatorio + oferta de ayuda, preguntar si sigue interesado.\n\n7. Intención firme de compra  \n   • Agradecer, ofrecer productos tendencia/márgenes, derivar a humano.  \n   → Tag: Humano\n\n8. Compra confirmada  \n   • Agradecer y confirmar acompañamiento del pedido.  \n   → Tag: Venta Cerrada\n\n9. Consultas técnicas específicas  \n   • Derivar a humano.  \n   → Tag: Humano\n\nPOLÍTICAS Y TONO \n\n* No hacer recomendaciones de compra ni de articulos\n* Mensajes cortos y charla lo mas orgánica posible\n* Cordial, profesional y amistoso; emojis moderados.  \n* Recordar que trabajamos solo mayoristas.  \n* Preguntas fuera del ámbito comercial o irrespetuosas: "Disculpá, no puedo ayudarte con eso. ¿Hay algo de la empresa o condiciones que quieras saber?"  \n* Si piden reunión/videollamada → Tag: Pedido reunión y responder que un asesor los contactará.  \n* Fuera de horario: reconocer mensaje y prometer respuesta dentro del horario.  \n* Usa solo estos tags: Interés Inicial, Contacto Obtenido, Humano, Venta Cerrada, Atención Especial, Pedido reunión.\n"
+        }
+      },
+      "id": "933d74fc-ab6d-432b-8d51-c10ef909c9fc",
+      "name": "Agente IA",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        1488,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1824,
+        720
+      ],
+      "id": "82a47413-4f2e-4447-9d80-bc11f899dde5",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "W96tMzZXtsLNGkte",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extraer respuesta del Agente IA\nconst agenteOutput = $input.item.json.output || $input.item.json.text || '';\n\n// Obtener datos de la conversación desde Edit Fields3\nconst conversationId = $('Edit Fields3').item.json['ID Chatwoot'];\nconst accountId = 2; // Account ID fijo para XIMARO\n\nconsole.log('Agente Output:', agenteOutput);\nconsole.log('Conversation ID:', conversationId);\nconsole.log('Account ID:', accountId);\n\nreturn {\n  content: agenteOutput,\n  conversation_id: conversationId,\n  account_id: accountId\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        320
+      ],
+      "id": "a5b3c4d5-e6f7-8g9h-0i1j-2k3l4m5n6o7p",
+      "name": "Preparar Datos"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://alvaro-chatwoot.5epeub.easypanel.host/api/v1/accounts/{{ $json.account_id }}/conversations/{{ $json.conversation_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "fLi8hi4RtbiBZs4okugg9VDL"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "={{ $json.content }}"
+            },
+            {
+              "name": "private",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1904,
+        320
+      ],
+      "id": "42673b21-c9da-4303-9081-114b4950badd",
+      "name": "Enviar Respuesta"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "CHATWOOT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CHATWOOT": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis3": {
+      "main": [
+        [
+          {
+            "node": "Redis4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis4": {
+      "main": [
+        [
+          {
+            "node": "Switch3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch3": {
+      "main": [
+        [
+          {
+            "node": "No Operation, do nothing3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Redis5",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Espera 7 segs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis5": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Audio File": {
+      "main": [
+        [
+          {
+            "node": "Transcribe a recording",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe a recording": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Espera 7 segs": {
+      "main": [
+        [
+          {
+            "node": "Redis4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Download Audio File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields3": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Redis3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields5": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields2": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Think": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente IA",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente IA",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Vector Store": {
+      "ai_vectorStore": [
+        [
+          {
+            "node": "Base de datos",
+            "type": "ai_vectorStore",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Supabase Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Base de datos": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente IA",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente IA",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Agente IA",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Agente IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Base de datos",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agente IA": {
+      "main": [
+        [
+          {
+            "node": "Preparar Datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Datos": {
+      "main": [
+        [
+          {
+            "node": "Enviar Respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "cc5ad53c-5075-4c31-b2d9-58ef2783a551",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0c7dd416da82309625c95022693181cfa297a1aac973e9693f78559f67847ca7"
+  },
+  "id": "8unv1S6AGEsGwMME",
+  "tags": [
+    {
+      "createdAt": "2025-10-31T15:37:04.287Z",
+      "updatedAt": "2025-10-31T15:37:04.287Z",
+      "id": "izqZPmJgPvJZmQ3f",
+      "name": "ximaro"
+    },
+    {
+      "createdAt": "2025-10-28T18:53:33.417Z",
+      "updatedAt": "2025-10-28T18:53:33.417Z",
+      "id": "lfhMcSAoHYLNxq7y",
+      "name": "chatwoot"
+    },
+    {
+      "createdAt": "2025-11-18T04:21:07.383Z",
+      "updatedAt": "2025-11-18T04:21:07.383Z",
+      "id": "sgMhJfvdctaaQjnI",
+      "name": "produccion"
+    }
+  ]
+}
